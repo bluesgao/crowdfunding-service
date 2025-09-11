@@ -92,6 +92,38 @@ func (p *ProjectLogic) CancelProject(id uint) error {
 	return nil
 }
 
+// GetProjects 获取项目列表
+func (p *ProjectLogic) GetProjects(status string, category string, creator string, page, pageSize int) ([]model.Project, int64, error) {
+	var projects []model.Project
+	var total int64
+
+	query := p.db.Model(&model.Project{})
+
+	// 添加过滤条件
+	if status != "" {
+		query = query.Where("status = ?", status)
+	}
+	if category != "" {
+		query = query.Where("category = ?", category)
+	}
+	if creator != "" {
+		query = query.Where("creator = ?", creator)
+	}
+
+	// 获取总数
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, fmt.Errorf("获取项目总数失败: %w", err)
+	}
+
+	// 分页查询
+	offset := (page - 1) * pageSize
+	if err := query.Offset(offset).Limit(pageSize).Find(&projects).Error; err != nil {
+		return nil, 0, fmt.Errorf("获取项目列表失败: %w", err)
+	}
+
+	return projects, total, nil
+}
+
 // GetProject 获取项目详情
 func (p *ProjectLogic) GetProject(id uint) (*model.Project, error) {
 	var project model.Project

@@ -124,7 +124,7 @@ func (h *ProjectHandler) UpdateProject(c *gin.Context) {
 	}
 
 	// 调用logic层更新项目
-	project, err := h.projectLogic.UpdateProject(uint(id), updates)
+	err = h.projectLogic.UpdateProject(uint(id), updates)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -132,7 +132,6 @@ func (h *ProjectHandler) UpdateProject(c *gin.Context) {
 
 	c.JSON(http.StatusOK, gin.H{
 		"message": "项目更新成功",
-		"project": project,
 	})
 }
 
