@@ -3,10 +3,10 @@ package main
 import (
 	"github.com/blues/cfs/internal/config"
 	"github.com/blues/cfs/internal/contract"
-	"github.com/blues/cfs/internal/database"
 	"github.com/blues/cfs/internal/handler"
 	"github.com/blues/cfs/internal/logger"
 	"github.com/blues/cfs/internal/logic"
+	"github.com/blues/cfs/internal/repository"
 	"github.com/blues/cfs/internal/router"
 	"github.com/blues/cfs/internal/task"
 	"github.com/gin-gonic/gin"
@@ -20,7 +20,7 @@ func main() {
 	logger.Init(cfg.Log)
 
 	// 初始化数据库
-	db, err := database.Init(cfg.Database)
+	db, err := repository.Init(cfg.Database)
 	if err != nil {
 		logger.Fatalf("Failed to initialize database: %v", err)
 	}
