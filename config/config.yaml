@@ -1,6 +1,6 @@
 server:
-  port: "38080" # 服务器端口
-  mode: "release" # 运行模式: debug, release
+  port: "18888" # 服务器端口
+  mode: "debug" # 运行模式: debug, release
 
 database:
   host: "localhost" # 数据库主机地址
@@ -27,16 +27,20 @@ ethereum:
 
   # 私钥 (64位十六进制字符串，可以带或不带0x前缀)
   # 警告: 请确保私钥安全，不要提交到版本控制系统
-  private_key: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+  private_key: "0x5baa4ed37e003885ecafcb8fe07d2a0bac4740b8d414655055a335ed899cf87b"
 
-  # 智能合约地址
-  contract_address: "0x1234567890123456789012345678901234567890"
-
-  # 开始监听的区块号
-  start_block: 9185473
+  # 全局开始监听的区块号（所有合约的默认值）
+  start_block: 9186975
 
   # 交易确认数
-  confirmations: 12
+  confirmations: 3
+
+  # 多合约配置（简化版）
+  contracts:
+    counter:
+      address: "0xc90698955C1cBD5d411F75c4adae0ba2D1Db6ef5"
+      abi_path: "config/abi/Counter.json"
+      enabled: true
 
 task:
   # 任务执行间隔(秒)

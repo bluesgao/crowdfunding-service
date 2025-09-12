@@ -200,8 +200,11 @@ func (e *EventLogic) GetEventsByTimeRange(startTime, endTime time.Time, page, pa
 
 // validateEvent 验证事件数据
 func (e *EventLogic) validateEvent(event *model.EventModel) error {
-	if event.ProjectId == 0 {
-		return errors.New("项目ID不能为空")
+	if event.ContractAddress == "" {
+		return errors.New("合约地址不能为空")
+	}
+	if event.ContractName == "" {
+		return errors.New("合约名称不能为空")
 	}
 	if event.EventType == "" {
 		return errors.New("事件类型不能为空")

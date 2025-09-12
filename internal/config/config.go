@@ -28,11 +28,18 @@ type DatabaseConfig struct {
 }
 
 type EthereumConfig struct {
-	RpcUrl        string `mapstructure:"rpc_url"`
-	PrivateKey    string `mapstructure:"private_key"`
-	ContractAddr  string `mapstructure:"contract_address"`
-	StartBlock    int64  `mapstructure:"start_block"`
-	Confirmations int    `mapstructure:"confirmations"`
+	RpcUrl        string                    `mapstructure:"rpc_url"`
+	PrivateKey    string                    `mapstructure:"private_key"`
+	StartBlock    int64                     `mapstructure:"start_block"`
+	Confirmations int                       `mapstructure:"confirmations"`
+	Contracts     map[string]ContractConfig `mapstructure:"contracts"` // 多合约配置
+}
+
+// ContractConfig 单个合约配置（简化版）
+type ContractConfig struct {
+	Address string `mapstructure:"address"`  // 合约地址
+	ABIPath string `mapstructure:"abi_path"` // ABI文件路径
+	Enabled bool   `mapstructure:"enabled"`  // 是否启用此合约
 }
 
 type TaskConfig struct {
@@ -43,6 +50,21 @@ type LogConfig struct {
 	Level  string `mapstructure:"level"`  // 日志级别: debug, info, warn, error, fatal
 	Output string `mapstructure:"output"` // 输出目标: stdout, stderr, file
 	File   string `mapstructure:"file"`   // 日志文件路径（当output为file时使用）
+}
+
+// GetLevel 实现 logger.LogConfig 接口
+func (l LogConfig) GetLevel() string {
+	return l.Level
+}
+
+// GetOutput 实现 logger.LogConfig 接口
+func (l LogConfig) GetOutput() string {
+	return l.Output
+}
+
+// GetFile 实现 logger.LogConfig 接口
+func (l LogConfig) GetFile() string {
+	return l.File
 }
 
 func Load() *Config {

@@ -2,38 +2,38 @@ package task
 
 import (
 	"github.com/blues/cfs/internal/config"
-	"github.com/blues/cfs/internal/ethereum"
+	"github.com/blues/cfs/internal/contract"
 	"github.com/blues/cfs/internal/logger"
 	"github.com/go-co-op/gocron/v2"
 	"gorm.io/gorm"
 )
 
-// Manager 任务管理器
-type Manager struct {
-	scheduler gocron.Scheduler
-	db        *gorm.DB
-	ethClient *ethereum.Client
-	config    *config.Config
+// TaskManager 任务管理器
+type TaskManager struct {
+	scheduler       gocron.Scheduler
+	db              *gorm.DB
+	contractManager *contract.ContractManager
+	config          *config.Config
 }
 
-// NewManager 创建新的任务管理器
-func NewManager(db *gorm.DB, ethClient *ethereum.Client, cfg *config.Config) *Manager {
+// NewTaskManager 创建新的任务管理器
+func NewTaskManager(db *gorm.DB, contractManager *contract.ContractManager, cfg *config.Config) *TaskManager {
 	s, err := gocron.NewScheduler()
 	if err != nil {
 		logger.Fatal("Failed to create scheduler: %v", err)
 	}
 
-	return &Manager{
-		scheduler: s,
-		db:        db,
-		ethClient: ethClient,
-		config:    cfg,
+	return &TaskManager{
+		scheduler:       s,
+		db:              db,
+		contractManager: contractManager,
+		config:          cfg,
 	}
 }
 
 // Start 启动任务管理器
-func Start(db *gorm.DB, ethClient *ethereum.Client, cfg *config.Config) {
-	manager := NewManager(db, ethClient, cfg)
+func Start(db *gorm.DB, contractManager *contract.ContractManager, cfg *config.Config) {
+	manager := NewTaskManager(db, contractManager, cfg)
 
 	// 注册所有任务
 	manager.RegisterJobs()
@@ -45,14 +45,14 @@ func Start(db *gorm.DB, ethClient *ethereum.Client, cfg *config.Config) {
 }
 
 // RegisterJobs 注册所有任务
-func (m *Manager) RegisterJobs() {
+func (m *TaskManager) RegisterJobs() {
 	// 注册项目部署任务
 	m.RegisterProjectDeployJob()
 }
 
 // RegisterProjectDeployJob 注册项目部署任务
-func (m *Manager) RegisterProjectDeployJob() {
-	job := NewProjectDeployJob(m.db, m.config, m.ethClient)
+func (m *TaskManager) RegisterProjectDeployJob() {
+	job := NewProjectDeployJob(m.db, m.config, m.contractManager)
 
 	_, err := m.scheduler.NewJob(
 		job.GetSchedule(),
@@ -66,7 +66,7 @@ func (m *Manager) RegisterProjectDeployJob() {
 }
 
 // Stop 停止任务管理器
-func (m *Manager) Stop() {
+func (m *TaskManager) Stop() {
 	if err := m.scheduler.Shutdown(); err != nil {
 		logger.Error("Failed to shutdown scheduler: %v", err)
 	}

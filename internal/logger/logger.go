@@ -47,6 +47,43 @@ func init() {
 	}
 }
 
+// LogConfig 日志配置接口
+type LogConfig interface {
+	GetLevel() string
+	GetOutput() string
+	GetFile() string
+}
+
+// InitWithConfig 根据配置初始化日志器
+func Init(config LogConfig) {
+	level := ParseLogLevel(config.GetLevel())
+
+	// 根据配置选择日志输出方式
+	if config.GetOutput() == "file" {
+		// 使用文件轮转日志
+		lumberjackConfig := LumberjackConfig{
+			Filename:   config.GetFile(),
+			MaxSize:    100,  // 100MB
+			MaxBackups: 5,    // 保留5个备份
+			MaxAge:     30,   // 保留30天
+			Compress:   true, // 压缩旧文件
+		}
+
+		fileLogger, err := NewWithLumberjackConfig(level, lumberjackConfig)
+		if err != nil {
+			panic("Failed to initialize file logger: " + err.Error())
+		}
+
+		// 替换默认日志器
+		SetDefaultLogger(fileLogger)
+		Info("Logger initialized with level: %s, output: %s, file: %s", config.GetLevel(), config.GetOutput(), config.GetFile())
+	} else {
+		// 使用标准输出
+		SetLevel(level)
+		Info("Logger initialized with level: %s, output: %s", config.GetLevel(), config.GetOutput())
+	}
+}
+
 // New 创建新的日志器
 func New(level LogLevel) (*Logger, error) {
 	config := zap.NewProductionConfig()
