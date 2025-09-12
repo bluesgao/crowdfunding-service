@@ -11,45 +11,41 @@ import (
 	"github.com/blues/cfs/internal/logic"
 	"github.com/blues/cfs/internal/model"
 	"github.com/ethereum/go-ethereum/core/types"
-	"gorm.io/gorm"
 )
 
 type Monitor struct {
-	client                  *ethereum.Client
-	eventLogic              *logic.EventLogic
-	contributeProcessor     *ContributeProcessor
-	refundProcessor         *RefundProcessor
-	projectStatusProcessor  *ProjectStatusProcessor
-	projectCreatedProcessor *ProjectCreatedProcessor
-	lastBlock               uint64
-	ctx                     context.Context
-	cancel                  context.CancelFunc
+	ethClient           *ethereum.Client
+	eventLogic          *logic.EventLogic
+	contributeProcessor *ContributeProcessor
+	refundProcessor     *RefundProcessor
+	projectProcessor    *ProjectProcessor
+	lastBlock           int64
+	ctx                 context.Context
+	cancel              context.CancelFunc
 }
 
-func NewMonitor(client *ethereum.Client, db *gorm.DB) *Monitor {
+func NewMonitor(
+	ethClient *ethereum.Client,
+	eventLogic *logic.EventLogic,
+	projectLogic *logic.ProjectLogic,
+	contributeLogic *logic.ContributeRecordLogic,
+	refundLogic *logic.RefundRecordLogic,
+) *Monitor {
 	ctx, cancel := context.WithCancel(context.Background())
-
-	// 创建logic层实例
-	eventLogic := logic.NewEventLogic(db)
-	projectLogic := logic.NewProjectLogic(db)
-	contributeLogic := logic.NewContributeRecordLogic(db)
-	refundLogic := logic.NewRefundRecordLogic(db)
 
 	// 创建事件处理器
 	contributeProcessor := NewContributeProcessor(contributeLogic)
 	refundProcessor := NewRefundProcessor(refundLogic)
-	projectStatusProcessor := NewProjectStatusProcessor(projectLogic)
-	projectCreatedProcessor := NewProjectCreatedProcessor()
+	projectProcessor := NewProjectProcessor(projectLogic)
 
 	return &Monitor{
-		client:                  client,
-		eventLogic:              eventLogic,
-		contributeProcessor:     contributeProcessor,
-		refundProcessor:         refundProcessor,
-		projectStatusProcessor:  projectStatusProcessor,
-		projectCreatedProcessor: projectCreatedProcessor,
-		ctx:                     ctx,
-		cancel:                  cancel,
+		ethClient:           ethClient,
+		eventLogic:          eventLogic,
+		contributeProcessor: contributeProcessor,
+		refundProcessor:     refundProcessor,
+		projectProcessor:    projectProcessor,
+		ctx:                 ctx,
+		cancel:              cancel,
 	}
 }
 
@@ -58,7 +54,7 @@ func (m *Monitor) Start() error {
 	// 获取最后处理的区块号
 	if err := m.loadLastBlock(); err != nil {
 		log.Printf("Failed to load last block, starting from config: %v", err)
-		m.lastBlock = m.client.StartBlock
+		m.lastBlock = m.ethClient.GetStartBlock()
 	}
 
 	log.Printf("Starting blockchain monitor from block %d", m.lastBlock)
@@ -81,16 +77,17 @@ func (m *Monitor) loadLastBlock() error {
 	}
 
 	if lastBlock == 0 {
-		m.lastBlock = m.client.StartBlock
+		m.lastBlock = m.ethClient.GetStartBlock()
 	} else {
-		m.lastBlock = lastBlock
+		m.lastBlock = int64(lastBlock)
 	}
+	log.Printf("Loaded last block %d", lastBlock)
 	return nil
 }
 
 // monitorLoop 监控循环
 func (m *Monitor) monitorLoop() {
-	ticker := time.NewTicker(10 * time.Second) // 每10秒检查一次
+	ticker := time.NewTicker(60 * time.Second) // 每60秒检查一次
 	defer ticker.Stop()
 
 	for {
@@ -109,7 +106,7 @@ func (m *Monitor) monitorLoop() {
 // processNewBlocks 处理新区块
 func (m *Monitor) processNewBlocks() error {
 	// 获取当前区块号
-	currentBlock, err := m.client.GetCurrentBlockNumber()
+	currentBlock, err := m.ethClient.GetCurrentBlockNumber()
 	if err != nil {
 		return fmt.Errorf("failed to get current block number: %w", err)
 	}
@@ -127,9 +124,21 @@ func (m *Monitor) processNewBlocks() error {
 }
 
 // processBlock 处理单个区块
-func (m *Monitor) processBlock(blockNum uint64) error {
+func (m *Monitor) processBlock(blockNum int64) error {
+	log.Printf("Processing block %d", blockNum)
+
+	// 获取区块交易
+	transactions, err := m.ethClient.GetBlockTransactions(blockNum)
+	if err != nil {
+		return fmt.Errorf("failed to get block transactions: %w", err)
+	}
+
+	for _, tx := range transactions {
+		log.Printf("Processing transaction: %v", tx.Hash().Hex())
+	}
+
 	// 获取区块日志
-	logs, err := m.client.GetBlockLogs(blockNum)
+	logs, err := m.ethClient.GetBlockLogs(blockNum)
 	if err != nil {
 		return fmt.Errorf("failed to get block logs: %w", err)
 	}
@@ -148,13 +157,13 @@ func (m *Monitor) processBlock(blockNum uint64) error {
 // processLog 处理单个日志
 func (m *Monitor) processLog(l types.Log) error {
 	// 解析事件数据
-	eventData, err := m.client.ParseEvent(l)
+	eventData, err := m.ethClient.ParseEvent(l)
 	if err != nil {
 		return fmt.Errorf("failed to parse event: %w", err)
 	}
 
 	// 检查事件是否已存在
-	exists, err := m.eventLogic.CheckEventExists(l.TxHash.Hex(), l.Index)
+	exists, err := m.eventLogic.CheckEventExists(l.TxHash.Hex(), int(l.Index))
 	if err != nil {
 		return fmt.Errorf("failed to check if event exists: %w", err)
 	}
@@ -170,18 +179,18 @@ func (m *Monitor) processLog(l types.Log) error {
 	}
 
 	// 创建事件记录
-	event := model.Event{
+	event := model.EventModel{
 		EventType: eventData["eventType"].(string),
 		TxHash:    l.TxHash.Hex(),
-		BlockNum:  l.BlockNumber,
-		LogIndex:  l.Index,
+		BlockNum:  int64(l.BlockNumber),
+		LogIndex:  int64(l.Index),
 		Data:      string(dataJSON),
 		Processed: false,
 	}
 
 	// 如果是项目相关事件，设置项目ID
-	if projectID, ok := eventData["projectId"]; ok {
-		event.ProjectID = uint(projectID.(uint64))
+	if projectId, ok := eventData["projectId"]; ok {
+		event.ProjectId = projectId.(int64)
 	}
 
 	// 通过event_logic保存到数据库
@@ -196,7 +205,7 @@ func (m *Monitor) processLog(l types.Log) error {
 }
 
 // handleEvent 处理事件
-func (m *Monitor) handleEvent(event *model.Event, eventData map[string]interface{}) error {
+func (m *Monitor) handleEvent(event *model.EventModel, eventData map[string]interface{}) error {
 	var err error
 
 	switch event.EventType {
@@ -204,10 +213,8 @@ func (m *Monitor) handleEvent(event *model.Event, eventData map[string]interface
 		err = m.contributeProcessor.Process(event, eventData)
 	case "RefundProcessed":
 		err = m.refundProcessor.Process(event, eventData)
-	case "ProjectStatusChanged", "ProjectStatus":
-		err = m.projectStatusProcessor.Process(event, eventData)
-	case "ProjectCreated":
-		err = m.projectCreatedProcessor.Process(event, eventData)
+	case "ProjectStatusChanged", "ProjectStatus", "ProjectCreated":
+		err = m.projectProcessor.Process(event, eventData)
 	default:
 		log.Printf("Unknown event type: %s", event.EventType)
 		return nil
@@ -218,7 +225,7 @@ func (m *Monitor) handleEvent(event *model.Event, eventData map[string]interface
 	}
 
 	// 标记事件为已处理
-	if err := m.eventLogic.UpdateEventProcessed(event.ID, true); err != nil {
+	if err := m.eventLogic.UpdateEventProcessed(event.Id, true); err != nil {
 		return fmt.Errorf("failed to mark event as processed: %w", err)
 	}
 

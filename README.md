@@ -42,9 +42,9 @@ crowdfunding-service/
 │   │   └── blockchain.go        # 区块链API处理器
 │   ├── router/
 │   │   └── router.go            # 路由配置
-│   └── scheduler/
-│       └── scheduler.go         # 定时任务调度器
-├── configs/
+│   └── task/
+│       └── manager.go           # 任务管理器
+├── config/
 │   └── config.yaml              # 配置文件
 ├── go.mod
 ├── go.sum
@@ -75,13 +75,13 @@ CREATE DATABASE crowdfunding;
 
 ### 4. 配置文件
 
-复制并修改配置文件：
+复制配置文件模板：
 
 ```bash
-cp configs/config.yaml configs/config.local.yaml
+cp config/config.example.yaml config/config.yaml
 ```
 
-编辑 `configs/config.local.yaml`：
+编辑 `config/config.yaml` 并填入真实配置：
 
 ```yaml
 server:
@@ -98,13 +98,39 @@ database:
 
 ethereum:
   rpc_url: "https://mainnet.infura.io/v3/YOUR_PROJECT_ID"
-  private_key: "YOUR_PRIVATE_KEY"
-  contract_address: "0x..."
+  private_key: "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+  contract_address: "0x1234567890123456789012345678901234567890"
   start_block: 0
   confirmations: 12
 
-scheduler:
+task:
   interval: 60
+```
+
+**重要配置说明：**
+
+- `private_key`: 必须是64位十六进制字符串（32字节），可以带或不带0x前缀
+- `contract_address`: 智能合约的部署地址
+- `rpc_url`: 以太坊节点RPC地址，可以使用Infura、Alchemy等服务
+- **安全提醒**: 私钥包含敏感信息，请确保不要提交到版本控制系统
+
+### 日志配置
+
+服务使用自定义日志器，支持以下配置：
+
+```yaml
+log:
+  level: "info"        # 日志级别: debug, info, warn, error, fatal
+  output: "stdout"     # 输出目标: stdout, stderr, file
+  file: "logs/app.log" # 日志文件路径（当output为file时使用）
+```
+
+**日志格式**: `[时间] [级别] [文件:行号] 消息`
+
+**示例输出**:
+```
+[2025-09-12 09:46:02] [INFO] [main.go:47] Server starting on port 8080
+[2025-09-12 09:46:02] [ERROR] [database.go:25] Failed to connect to database
 ```
 
 ### 5. 运行服务
@@ -265,7 +291,7 @@ GET /api/v1/blockchain/events/{id}
 
 ### 添加新的定时任务
 
-1. 在 `internal/scheduler/scheduler.go` 中添加任务函数
+1. 在 `internal/task/manager.go` 中添加任务函数
 2. 在 `Start()` 方法中注册任务
 
 ### 添加新的区块链事件
@@ -288,7 +314,7 @@ FROM alpine:latest
 RUN apk --no-cache add ca-certificates
 WORKDIR /root/
 COPY --from=builder /app/main .
-COPY --from=builder /app/configs ./configs
+COPY --from=builder /app/config ./config
 CMD ["./main"]
 ```
 

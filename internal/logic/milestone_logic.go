@@ -19,15 +19,15 @@ func NewMilestoneLogic(db *gorm.DB) *MilestoneLogic {
 }
 
 // CreateMilestone 创建里程碑
-func (m *MilestoneLogic) CreateMilestone(milestone *model.ProjectMilestone) error {
+func (m *MilestoneLogic) CreateMilestone(milestone *model.ProjectMilestoneModel) error {
 	// 验证里程碑数据
 	if err := m.validateMilestone(milestone); err != nil {
 		return err
 	}
 
 	// 检查项目是否存在
-	var project model.Project
-	if err := m.db.First(&project, milestone.ProjectID).Error; err != nil {
+	var project model.ProjectModel
+	if err := m.db.First(&project, milestone.ProjectId).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return errors.New("项目不存在")
 		}
@@ -43,9 +43,9 @@ func (m *MilestoneLogic) CreateMilestone(milestone *model.ProjectMilestone) erro
 }
 
 // UpdateMilestone 更新里程碑
-func (m *MilestoneLogic) UpdateMilestone(id uint, updates map[string]interface{}) error {
+func (m *MilestoneLogic) UpdateMilestone(id int64, updates map[string]interface{}) error {
 	// 检查里程碑是否存在
-	var milestone model.ProjectMilestone
+	var milestone model.ProjectMilestoneModel
 	if err := m.db.First(&milestone, id).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return errors.New("里程碑不存在")
@@ -80,10 +80,10 @@ func (m *MilestoneLogic) UpdateMilestone(id uint, updates map[string]interface{}
 }
 
 // GetProjectMilestones 获取项目里程碑
-func (m *MilestoneLogic) GetProjectMilestones(projectID uint, isPublic bool) ([]model.ProjectMilestone, error) {
-	var milestones []model.ProjectMilestone
+func (m *MilestoneLogic) GetProjectMilestones(projectId int64, isPublic bool) ([]model.ProjectMilestoneModel, error) {
+	var milestones []model.ProjectMilestoneModel
 
-	query := m.db.Where("project_id = ?", projectID)
+	query := m.db.Where("project_id = ?", projectId)
 	if isPublic {
 		query = query.Where("is_public = ?", true)
 	}
@@ -96,12 +96,12 @@ func (m *MilestoneLogic) GetProjectMilestones(projectID uint, isPublic bool) ([]
 }
 
 // UpdateMilestoneProgress 更新里程碑进度
-func (m *MilestoneLogic) UpdateMilestoneProgress(id uint, progress int) error {
+func (m *MilestoneLogic) UpdateMilestoneProgress(id int64, progress int) error {
 	if progress < 0 || progress > 100 {
 		return errors.New("进度必须在0-100之间")
 	}
 
-	var milestone model.ProjectMilestone
+	var milestone model.ProjectMilestoneModel
 	if err := m.db.First(&milestone, id).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return errors.New("里程碑不存在")
@@ -132,8 +132,8 @@ func (m *MilestoneLogic) UpdateMilestoneProgress(id uint, progress int) error {
 }
 
 // validateMilestone 验证里程碑数据
-func (m *MilestoneLogic) validateMilestone(milestone *model.ProjectMilestone) error {
-	if milestone.ProjectID == 0 {
+func (m *MilestoneLogic) validateMilestone(milestone *model.ProjectMilestoneModel) error {
+	if milestone.ProjectId == 0 {
 		return errors.New("项目ID不能为空")
 	}
 	if milestone.Title == "" {

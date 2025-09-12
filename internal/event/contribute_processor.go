@@ -21,14 +21,14 @@ func NewContributeProcessor(contributeLogic *logic.ContributeRecordLogic) *Contr
 }
 
 // Process 处理贡献事件
-func (p *ContributeProcessor) Process(event *model.Event, eventData map[string]interface{}) error {
+func (p *ContributeProcessor) Process(event *model.EventModel, eventData map[string]interface{}) error {
 	// 创建贡献记录
 	contributor := eventData["contributor"].(string)
 	amount := eventData["amount"].(*big.Int)
 
-	contribution := model.ContributeRecord{
-		ProjectID: event.ProjectID,
-		Amount:    float64(amount.Int64()) / 1e18, // 转换为ETH
+	contribution := model.ContributeRecordModel{
+		ProjectId: event.ProjectId,
+		Amount:    amount.Int64(), // 保持wei单位
 		Address:   contributor,
 		TxHash:    event.TxHash,
 		BlockNum:  event.BlockNum,
@@ -41,7 +41,7 @@ func (p *ContributeProcessor) Process(event *model.Event, eventData map[string]i
 	}
 
 	log.Printf("Processed contribution: %f ETH from %s to project %d",
-		contribution.Amount, contributor, event.ProjectID)
+		contribution.Amount, contributor, event.ProjectId)
 
 	return nil
 }

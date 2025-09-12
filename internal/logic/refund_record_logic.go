@@ -19,15 +19,15 @@ func NewRefundRecordLogic(db *gorm.DB) *RefundRecordLogic {
 }
 
 // CreateRefundRecord 创建退款记录
-func (r *RefundRecordLogic) CreateRefundRecord(refundRecord *model.RefundRecord) error {
+func (r *RefundRecordLogic) CreateRefundRecord(refundRecord *model.RefundRecordModel) error {
 	// 验证退款数据
 	if err := r.validateRefundRecord(refundRecord); err != nil {
 		return err
 	}
 
 	// 检查项目是否存在
-	var project model.Project
-	if err := r.db.First(&project, refundRecord.ProjectID).Error; err != nil {
+	var project model.ProjectModel
+	if err := r.db.First(&project, refundRecord.ProjectId).Error; err != nil {
 		return errors.New("项目不存在")
 	}
 
@@ -37,14 +37,14 @@ func (r *RefundRecordLogic) CreateRefundRecord(refundRecord *model.RefundRecord)
 	}
 
 	// 检查贡献记录是否存在
-	var contributeRecord model.ContributeRecord
-	if err := r.db.Where("project_id = ? AND address = ?", refundRecord.ProjectID, refundRecord.Address).First(&contributeRecord).Error; err != nil {
+	var contributeRecord model.ContributeRecordModel
+	if err := r.db.Where("project_id = ? AND address = ?", refundRecord.ProjectId, refundRecord.Address).First(&contributeRecord).Error; err != nil {
 		return errors.New("未找到对应的贡献记录")
 	}
 
 	// 检查是否已经退款
-	var existingRefund model.RefundRecord
-	if err := r.db.Where("project_id = ? AND address = ?", refundRecord.ProjectID, refundRecord.Address).First(&existingRefund).Error; err == nil {
+	var existingRefund model.RefundRecordModel
+	if err := r.db.Where("project_id = ? AND address = ?", refundRecord.ProjectId, refundRecord.Address).First(&existingRefund).Error; err == nil {
 		return errors.New("该地址已经退款")
 	}
 
@@ -65,18 +65,18 @@ func (r *RefundRecordLogic) CreateRefundRecord(refundRecord *model.RefundRecord)
 }
 
 // GetProjectRefunds 获取项目退款记录
-func (r *RefundRecordLogic) GetProjectRefunds(projectID uint, page, pageSize int) ([]model.RefundRecord, int64, error) {
-	var refunds []model.RefundRecord
+func (r *RefundRecordLogic) GetProjectRefunds(projectId int64, page, pageSize int) ([]model.RefundRecordModel, int64, error) {
+	var refunds []model.RefundRecordModel
 	var total int64
 
 	// 获取总数
-	if err := r.db.Model(&model.RefundRecord{}).Where("project_id = ?", projectID).Count(&total).Error; err != nil {
+	if err := r.db.Model(&model.RefundRecordModel{}).Where("project_id = ?", projectId).Count(&total).Error; err != nil {
 		return nil, 0, fmt.Errorf("获取退款记录总数失败: %w", err)
 	}
 
 	// 分页查询
 	offset := (page - 1) * pageSize
-	if err := r.db.Where("project_id = ?", projectID).
+	if err := r.db.Where("project_id = ?", projectId).
 		Order("created_at DESC").
 		Offset(offset).
 		Limit(pageSize).
@@ -88,12 +88,12 @@ func (r *RefundRecordLogic) GetProjectRefunds(projectID uint, page, pageSize int
 }
 
 // GetUserRefunds 获取用户退款记录
-func (r *RefundRecordLogic) GetUserRefunds(address string, page, pageSize int) ([]model.RefundRecord, int64, error) {
-	var refunds []model.RefundRecord
+func (r *RefundRecordLogic) GetUserRefunds(address string, page, pageSize int) ([]model.RefundRecordModel, int64, error) {
+	var refunds []model.RefundRecordModel
 	var total int64
 
 	// 获取总数
-	if err := r.db.Model(&model.RefundRecord{}).Where("address = ?", address).Count(&total).Error; err != nil {
+	if err := r.db.Model(&model.RefundRecordModel{}).Where("address = ?", address).Count(&total).Error; err != nil {
 		return nil, 0, fmt.Errorf("获取用户退款记录总数失败: %w", err)
 	}
 
@@ -111,8 +111,8 @@ func (r *RefundRecordLogic) GetUserRefunds(address string, page, pageSize int) (
 }
 
 // GetRefundByTxHash 根据交易哈希获取退款记录
-func (r *RefundRecordLogic) GetRefundByTxHash(txHash string) (*model.RefundRecord, error) {
-	var refund model.RefundRecord
+func (r *RefundRecordLogic) GetRefundByTxHash(txHash string) (*model.RefundRecordModel, error) {
+	var refund model.RefundRecordModel
 	if err := r.db.Where("tx_hash = ?", txHash).First(&refund).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, errors.New("退款记录不存在")
@@ -124,8 +124,8 @@ func (r *RefundRecordLogic) GetRefundByTxHash(txHash string) (*model.RefundRecor
 }
 
 // UpdateRefundStatus 更新退款状态
-func (r *RefundRecordLogic) UpdateRefundStatus(id uint, status model.RefundStatus) error {
-	if err := r.db.Model(&model.RefundRecord{}).Where("id = ?", id).Update("status", status).Error; err != nil {
+func (r *RefundRecordLogic) UpdateRefundStatus(id int64, status model.RefundStatus) error {
+	if err := r.db.Model(&model.RefundRecordModel{}).Where("id = ?", id).Update("status", status).Error; err != nil {
 		return fmt.Errorf("更新退款状态失败: %w", err)
 	}
 
@@ -133,7 +133,7 @@ func (r *RefundRecordLogic) UpdateRefundStatus(id uint, status model.RefundStatu
 }
 
 // GetRefundStatistics 获取退款统计信息
-func (r *RefundRecordLogic) GetRefundStatistics(projectID uint) (map[string]interface{}, error) {
+func (r *RefundRecordLogic) GetRefundStatistics(projectId int64) (map[string]interface{}, error) {
 	var stats struct {
 		TotalRefunds     int64   `json:"total_refunds"`
 		TotalAmount      float64 `json:"total_amount"`
@@ -143,27 +143,27 @@ func (r *RefundRecordLogic) GetRefundStatistics(projectID uint) (map[string]inte
 	}
 
 	// 总退款记录数
-	if err := r.db.Model(&model.RefundRecord{}).Where("project_id = ?", projectID).Count(&stats.TotalRefunds).Error; err != nil {
+	if err := r.db.Model(&model.RefundRecordModel{}).Where("project_id = ?", projectId).Count(&stats.TotalRefunds).Error; err != nil {
 		return nil, fmt.Errorf("获取总退款记录数失败: %w", err)
 	}
 
 	// 总退款金额
-	if err := r.db.Model(&model.RefundRecord{}).Where("project_id = ?", projectID).Select("COALESCE(SUM(amount), 0)").Scan(&stats.TotalAmount).Error; err != nil {
+	if err := r.db.Model(&model.RefundRecordModel{}).Where("project_id = ?", projectId).Select("COALESCE(SUM(amount), 0)").Scan(&stats.TotalAmount).Error; err != nil {
 		return nil, fmt.Errorf("获取总退款金额失败: %w", err)
 	}
 
 	// 待处理退款数
-	if err := r.db.Model(&model.RefundRecord{}).Where("project_id = ? AND status = ?", projectID, model.RefundStatusPending).Count(&stats.PendingRefunds).Error; err != nil {
+	if err := r.db.Model(&model.RefundRecordModel{}).Where("project_id = ? AND status = ?", projectId, model.RefundStatusPending).Count(&stats.PendingRefunds).Error; err != nil {
 		return nil, fmt.Errorf("获取待处理退款数失败: %w", err)
 	}
 
 	// 已完成退款数
-	if err := r.db.Model(&model.RefundRecord{}).Where("project_id = ? AND status = ?", projectID, model.RefundStatusSuccess).Count(&stats.CompletedRefunds).Error; err != nil {
+	if err := r.db.Model(&model.RefundRecordModel{}).Where("project_id = ? AND status = ?", projectId, model.RefundStatusSuccess).Count(&stats.CompletedRefunds).Error; err != nil {
 		return nil, fmt.Errorf("获取已完成退款数失败: %w", err)
 	}
 
 	// 失败退款数
-	if err := r.db.Model(&model.RefundRecord{}).Where("project_id = ? AND status = ?", projectID, model.RefundStatusFailed).Count(&stats.FailedRefunds).Error; err != nil {
+	if err := r.db.Model(&model.RefundRecordModel{}).Where("project_id = ? AND status = ?", projectId, model.RefundStatusFailed).Count(&stats.FailedRefunds).Error; err != nil {
 		return nil, fmt.Errorf("获取失败退款数失败: %w", err)
 	}
 
@@ -177,8 +177,8 @@ func (r *RefundRecordLogic) GetRefundStatistics(projectID uint) (map[string]inte
 }
 
 // validateRefundRecord 验证退款数据
-func (r *RefundRecordLogic) validateRefundRecord(refundRecord *model.RefundRecord) error {
-	if refundRecord.ProjectID == 0 {
+func (r *RefundRecordLogic) validateRefundRecord(refundRecord *model.RefundRecordModel) error {
+	if refundRecord.ProjectId == 0 {
 		return errors.New("项目ID不能为空")
 	}
 	if refundRecord.Address == "" {

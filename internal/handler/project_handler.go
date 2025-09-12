@@ -7,22 +7,21 @@ import (
 	"github.com/blues/cfs/internal/logic"
 	"github.com/blues/cfs/internal/model"
 	"github.com/gin-gonic/gin"
-	"gorm.io/gorm"
 )
 
 type ProjectHandler struct {
 	projectLogic *logic.ProjectLogic
 }
 
-func NewProjectHandler(db *gorm.DB) *ProjectHandler {
+func NewProjectHandler(projectLogic *logic.ProjectLogic) *ProjectHandler {
 	return &ProjectHandler{
-		projectLogic: logic.NewProjectLogic(db),
+		projectLogic: projectLogic,
 	}
 }
 
 // CreateProject 创建项目
 func (h *ProjectHandler) CreateProject(c *gin.Context) {
-	var project model.Project
+	var project model.ProjectModel
 	if err := c.ShouldBindJSON(&project); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -73,7 +72,7 @@ func (h *ProjectHandler) GetProject(c *gin.Context) {
 	}
 
 	// 调用logic层获取项目详情
-	project, err := h.projectLogic.GetProject(uint(id))
+	project, err := h.projectLogic.GetProject(int64(id))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -124,7 +123,7 @@ func (h *ProjectHandler) UpdateProject(c *gin.Context) {
 	}
 
 	// 调用logic层更新项目
-	err = h.projectLogic.UpdateProject(uint(id), updates)
+	err = h.projectLogic.UpdateProject(int64(id), updates)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -144,7 +143,7 @@ func (h *ProjectHandler) CancelProject(c *gin.Context) {
 	}
 
 	// 调用logic层取消项目
-	if err := h.projectLogic.CancelProject(uint(id)); err != nil {
+	if err := h.projectLogic.CancelProject(int64(id)); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
@@ -165,7 +164,7 @@ func (h *ProjectHandler) GetProjectContributions(c *gin.Context) {
 	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
 
 	// 调用logic层获取项目贡献记录
-	contributions, total, err := h.projectLogic.GetProjectContributions(uint(id), page, pageSize)
+	contributions, total, err := h.projectLogic.GetProjectContributions(int64(id), page, pageSize)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -188,7 +187,7 @@ func (h *ProjectHandler) GetProjectStats(c *gin.Context) {
 	}
 
 	// 调用logic层获取项目统计信息
-	stats, err := h.projectLogic.GetProjectStats(uint(id))
+	stats, err := h.projectLogic.GetProjectStats(int64(id))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return

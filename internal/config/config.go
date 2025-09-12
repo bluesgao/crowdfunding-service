@@ -7,10 +7,11 @@ import (
 )
 
 type Config struct {
-	Server    ServerConfig    `mapstructure:"server"`
-	Database  DatabaseConfig  `mapstructure:"database"`
-	Ethereum  EthereumConfig  `mapstructure:"ethereum"`
-	Scheduler SchedulerConfig `mapstructure:"scheduler"`
+	Server   ServerConfig   `mapstructure:"server"`
+	Database DatabaseConfig `mapstructure:"database"`
+	Ethereum EthereumConfig `mapstructure:"ethereum"`
+	Task     TaskConfig     `mapstructure:"task"`
+	Log      LogConfig      `mapstructure:"log"`
 }
 
 type ServerConfig struct {
@@ -28,22 +29,28 @@ type DatabaseConfig struct {
 }
 
 type EthereumConfig struct {
-	RPCURL        string `mapstructure:"rpc_url"`
+	RpcUrl        string `mapstructure:"rpc_url"`
 	PrivateKey    string `mapstructure:"private_key"`
 	ContractAddr  string `mapstructure:"contract_address"`
-	StartBlock    uint64 `mapstructure:"start_block"`
+	StartBlock    int64  `mapstructure:"start_block"`
 	Confirmations int    `mapstructure:"confirmations"`
 }
 
-type SchedulerConfig struct {
+type TaskConfig struct {
 	Interval int `mapstructure:"interval"` // 秒
+}
+
+type LogConfig struct {
+	Level  string `mapstructure:"level"`  // 日志级别: debug, info, warn, error, fatal
+	Output string `mapstructure:"output"` // 输出目标: stdout, stderr, file
+	File   string `mapstructure:"file"`   // 日志文件路径（当output为file时使用）
 }
 
 func Load() *Config {
 	viper.SetConfigName("config")
 	viper.SetConfigType("yaml")
 	viper.AddConfigPath(".")
-	viper.AddConfigPath("./configs")
+	viper.AddConfigPath("./config")
 	viper.AddConfigPath("/etc/cfs")
 
 	// 设置默认值
@@ -57,7 +64,10 @@ func Load() *Config {
 	viper.SetDefault("database.sslmode", "disable")
 	viper.SetDefault("ethereum.start_block", 0)
 	viper.SetDefault("ethereum.confirmations", 12)
-	viper.SetDefault("scheduler.interval", 60)
+	viper.SetDefault("task.interval", 60)
+	viper.SetDefault("log.level", "info")
+	viper.SetDefault("log.output", "stdout")
+	viper.SetDefault("log.file", "logs/app.log")
 
 	// 自动读取环境变量
 	viper.AutomaticEnv()

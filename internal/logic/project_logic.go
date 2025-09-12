@@ -20,14 +20,14 @@ func NewProjectLogic(db *gorm.DB) *ProjectLogic {
 }
 
 // CreateProject 创建项目
-func (p *ProjectLogic) CreateProject(project *model.Project) error {
+func (p *ProjectLogic) CreateProject(project *model.ProjectModel) error {
 	// 验证项目数据
 	if err := p.validateProject(project); err != nil {
 		return err
 	}
 
 	// 设置默认值
-	project.Status = model.ProjectStatusPending
+	project.Status = model.ProjectStatusDeploying
 	project.CurrentAmount = 0
 
 	// 创建项目
@@ -39,9 +39,9 @@ func (p *ProjectLogic) CreateProject(project *model.Project) error {
 }
 
 // UpdateProject 更新项目
-func (p *ProjectLogic) UpdateProject(id uint, updates map[string]interface{}) error {
+func (p *ProjectLogic) UpdateProject(id int64, updates map[string]interface{}) error {
 	// 检查项目是否存在
-	var project model.Project
+	var project model.ProjectModel
 	if err := p.db.First(&project, id).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return errors.New("项目不存在")
@@ -70,8 +70,8 @@ func (p *ProjectLogic) UpdateProject(id uint, updates map[string]interface{}) er
 }
 
 // CancelProject 取消项目
-func (p *ProjectLogic) CancelProject(id uint) error {
-	var project model.Project
+func (p *ProjectLogic) CancelProject(id int64) error {
+	var project model.ProjectModel
 	if err := p.db.First(&project, id).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return errors.New("项目不存在")
@@ -93,11 +93,11 @@ func (p *ProjectLogic) CancelProject(id uint) error {
 }
 
 // GetProjects 获取项目列表
-func (p *ProjectLogic) GetProjects(status string, category string, creator string, page, pageSize int) ([]model.Project, int64, error) {
-	var projects []model.Project
+func (p *ProjectLogic) GetProjects(status string, category string, creator string, page, pageSize int) ([]model.ProjectModel, int64, error) {
+	var projects []model.ProjectModel
 	var total int64
 
-	query := p.db.Model(&model.Project{})
+	query := p.db.Model(&model.ProjectModel{})
 
 	// 添加过滤条件
 	if status != "" {
@@ -125,8 +125,8 @@ func (p *ProjectLogic) GetProjects(status string, category string, creator strin
 }
 
 // GetProject 获取项目详情
-func (p *ProjectLogic) GetProject(id uint) (*model.Project, error) {
-	var project model.Project
+func (p *ProjectLogic) GetProject(id int64) (*model.ProjectModel, error) {
+	var project model.ProjectModel
 	if err := p.db.Preload("Contributions").
 		Preload("Events").
 		First(&project, id).Error; err != nil {
@@ -140,8 +140,8 @@ func (p *ProjectLogic) GetProject(id uint) (*model.Project, error) {
 }
 
 // UpdateProjectStatus 更新项目状态
-func (p *ProjectLogic) UpdateProjectStatus(id uint, status model.ProjectStatus) error {
-	var project model.Project
+func (p *ProjectLogic) UpdateProjectStatus(id int64, status model.ProjectStatus) error {
+	var project model.ProjectModel
 	if err := p.db.First(&project, id).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return errors.New("项目不存在")
@@ -158,18 +158,18 @@ func (p *ProjectLogic) UpdateProjectStatus(id uint, status model.ProjectStatus) 
 }
 
 // GetProjectContributions 获取项目贡献记录
-func (p *ProjectLogic) GetProjectContributions(projectID uint, page, pageSize int) ([]model.ContributeRecord, int64, error) {
-	var contributions []model.ContributeRecord
+func (p *ProjectLogic) GetProjectContributions(projectId int64, page, pageSize int) ([]model.ContributeRecordModel, int64, error) {
+	var contributions []model.ContributeRecordModel
 	var total int64
 
 	// 获取总数
-	if err := p.db.Model(&model.ContributeRecord{}).Where("project_id = ?", projectID).Count(&total).Error; err != nil {
+	if err := p.db.Model(&model.ContributeRecordModel{}).Where("project_id = ?", projectId).Count(&total).Error; err != nil {
 		return nil, 0, fmt.Errorf("获取贡献记录总数失败: %w", err)
 	}
 
 	// 分页查询
 	offset := (page - 1) * pageSize
-	if err := p.db.Where("project_id = ?", projectID).
+	if err := p.db.Where("project_id = ?", projectId).
 		Order("created_at DESC").
 		Offset(offset).
 		Limit(pageSize).
@@ -181,8 +181,8 @@ func (p *ProjectLogic) GetProjectContributions(projectID uint, page, pageSize in
 }
 
 // GetProjectStats 获取项目统计信息
-func (p *ProjectLogic) GetProjectStats(id uint) (map[string]interface{}, error) {
-	var project model.Project
+func (p *ProjectLogic) GetProjectStats(id int64) (map[string]interface{}, error) {
+	var project model.ProjectModel
 	if err := p.db.First(&project, id).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, errors.New("项目不存在")
@@ -192,21 +192,21 @@ func (p *ProjectLogic) GetProjectStats(id uint) (map[string]interface{}, error) 
 
 	// 统计贡献者数量
 	var contributorCount int64
-	p.db.Model(&model.ContributeRecord{}).
+	p.db.Model(&model.ContributeRecordModel{}).
 		Where("project_id = ?", id).
 		Distinct("address").
 		Count(&contributorCount)
 
 	// 统计贡献记录数量
 	var contributionCount int64
-	p.db.Model(&model.ContributeRecord{}).
+	p.db.Model(&model.ContributeRecordModel{}).
 		Where("project_id = ?", id).
 		Count(&contributionCount)
 
 	// 计算完成百分比
 	completionPercentage := float64(0)
 	if project.TargetAmount > 0 {
-		completionPercentage = (project.CurrentAmount / project.TargetAmount) * 100
+		completionPercentage = float64(project.CurrentAmount) / float64(project.TargetAmount) * 100
 	}
 
 	// 计算剩余时间
@@ -216,7 +216,7 @@ func (p *ProjectLogic) GetProjectStats(id uint) (map[string]interface{}, error) 
 	}
 
 	return map[string]interface{}{
-		"project_id":            project.ID,
+		"project_id":            project.Id,
 		"current_amount":        project.CurrentAmount,
 		"target_amount":         project.TargetAmount,
 		"completion_percentage": completionPercentage,
@@ -228,7 +228,7 @@ func (p *ProjectLogic) GetProjectStats(id uint) (map[string]interface{}, error) 
 }
 
 // validateProject 验证项目数据
-func (p *ProjectLogic) validateProject(project *model.Project) error {
+func (p *ProjectLogic) validateProject(project *model.ProjectModel) error {
 	if project.Title == "" {
 		return errors.New("项目标题不能为空")
 	}

@@ -19,15 +19,15 @@ func NewContributeRecordLogic(db *gorm.DB) *ContributeRecordLogic {
 }
 
 // CreateContributeRecord 创建贡献记录
-func (c *ContributeRecordLogic) CreateContributeRecord(contributeRecord *model.ContributeRecord) error {
+func (c *ContributeRecordLogic) CreateContributeRecord(contributeRecord *model.ContributeRecordModel) error {
 	// 验证贡献数据
 	if err := c.validateContributeRecord(contributeRecord); err != nil {
 		return err
 	}
 
 	// 检查项目是否存在且状态正确
-	var project model.Project
-	if err := c.db.First(&project, contributeRecord.ProjectID).Error; err != nil {
+	var project model.ProjectModel
+	if err := c.db.First(&project, contributeRecord.ProjectId).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return errors.New("项目不存在")
 		}
@@ -39,12 +39,12 @@ func (c *ContributeRecordLogic) CreateContributeRecord(contributeRecord *model.C
 	}
 
 	// 检查是否超过最大贡献限制
-	if project.MaxContribution > 0 && contributeRecord.Amount > project.MaxContribution {
+	if project.MaxAmount > 0 && contributeRecord.Amount > project.MaxAmount {
 		return errors.New("贡献金额超过最大限制")
 	}
 
 	// 检查是否低于最小贡献限制
-	if project.MinContribution > 0 && contributeRecord.Amount < project.MinContribution {
+	if project.MinAmount > 0 && contributeRecord.Amount < project.MinAmount {
 		return errors.New("贡献金额低于最小限制")
 	}
 
@@ -85,18 +85,18 @@ func (c *ContributeRecordLogic) CreateContributeRecord(contributeRecord *model.C
 }
 
 // GetProjectContributeRecords 获取项目贡献记录
-func (c *ContributeRecordLogic) GetProjectContributeRecords(projectID uint, page, pageSize int) ([]model.ContributeRecord, int64, error) {
-	var contributions []model.ContributeRecord
+func (c *ContributeRecordLogic) GetProjectContributeRecords(projectId int64, page, pageSize int) ([]model.ContributeRecordModel, int64, error) {
+	var contributions []model.ContributeRecordModel
 	var total int64
 
 	// 获取总数
-	if err := c.db.Model(&model.ContributeRecord{}).Where("project_id = ?", projectID).Count(&total).Error; err != nil {
+	if err := c.db.Model(&model.ContributeRecordModel{}).Where("project_id = ?", projectId).Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
 
 	// 获取数据
 	offset := (page - 1) * pageSize
-	if err := c.db.Where("project_id = ?", projectID).
+	if err := c.db.Where("project_id = ?", projectId).
 		Offset(offset).
 		Limit(pageSize).
 		Order("created_at DESC").
@@ -108,12 +108,12 @@ func (c *ContributeRecordLogic) GetProjectContributeRecords(projectID uint, page
 }
 
 // GetUserContributeRecords 获取用户贡献记录
-func (c *ContributeRecordLogic) GetUserContributeRecords(address string, page, pageSize int) ([]model.ContributeRecord, int64, error) {
-	var contributions []model.ContributeRecord
+func (c *ContributeRecordLogic) GetUserContributeRecords(address string, page, pageSize int) ([]model.ContributeRecordModel, int64, error) {
+	var contributions []model.ContributeRecordModel
 	var total int64
 
 	// 获取总数
-	if err := c.db.Model(&model.ContributeRecord{}).Where("address = ?", address).Count(&total).Error; err != nil {
+	if err := c.db.Model(&model.ContributeRecordModel{}).Where("address = ?", address).Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
 
@@ -132,8 +132,8 @@ func (c *ContributeRecordLogic) GetUserContributeRecords(address string, page, p
 }
 
 // validateContributeRecord 验证贡献数据
-func (c *ContributeRecordLogic) validateContributeRecord(contributeRecord *model.ContributeRecord) error {
-	if contributeRecord.ProjectID == 0 {
+func (c *ContributeRecordLogic) validateContributeRecord(contributeRecord *model.ContributeRecordModel) error {
+	if contributeRecord.ProjectId == 0 {
 		return errors.New("项目ID不能为空")
 	}
 	if contributeRecord.Amount <= 0 {
@@ -149,8 +149,8 @@ func (c *ContributeRecordLogic) validateContributeRecord(contributeRecord *model
 }
 
 // GetContributeRecordByTxHash 根据交易哈希获取贡献记录
-func (c *ContributeRecordLogic) GetContributeRecordByTxHash(txHash string) (*model.ContributeRecord, error) {
-	var record model.ContributeRecord
+func (c *ContributeRecordLogic) GetContributeRecordByTxHash(txHash string) (*model.ContributeRecordModel, error) {
+	var record model.ContributeRecordModel
 	if err := c.db.Where("tx_hash = ?", txHash).First(&record).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, errors.New("贡献记录不存在")
@@ -162,7 +162,7 @@ func (c *ContributeRecordLogic) GetContributeRecordByTxHash(txHash string) (*mod
 }
 
 // GetContributeStatistics 获取贡献统计信息
-func (c *ContributeRecordLogic) GetContributeStatistics(projectID uint) (map[string]interface{}, error) {
+func (c *ContributeRecordLogic) GetContributeStatistics(projectId int64) (map[string]interface{}, error) {
 	var stats struct {
 		TotalContributions int64   `json:"total_contributions"`
 		TotalAmount        float64 `json:"total_amount"`
@@ -171,17 +171,17 @@ func (c *ContributeRecordLogic) GetContributeStatistics(projectID uint) (map[str
 	}
 
 	// 总贡献记录数
-	if err := c.db.Model(&model.ContributeRecord{}).Where("project_id = ?", projectID).Count(&stats.TotalContributions).Error; err != nil {
+	if err := c.db.Model(&model.ContributeRecordModel{}).Where("project_id = ?", projectId).Count(&stats.TotalContributions).Error; err != nil {
 		return nil, fmt.Errorf("获取总贡献记录数失败: %w", err)
 	}
 
 	// 总贡献金额
-	if err := c.db.Model(&model.ContributeRecord{}).Where("project_id = ?", projectID).Select("COALESCE(SUM(amount), 0)").Scan(&stats.TotalAmount).Error; err != nil {
+	if err := c.db.Model(&model.ContributeRecordModel{}).Where("project_id = ?", projectId).Select("COALESCE(SUM(amount), 0)").Scan(&stats.TotalAmount).Error; err != nil {
 		return nil, fmt.Errorf("获取总贡献金额失败: %w", err)
 	}
 
 	// 唯一贡献者数量
-	if err := c.db.Model(&model.ContributeRecord{}).Where("project_id = ?", projectID).Select("COUNT(DISTINCT address)").Scan(&stats.UniqueContributors).Error; err != nil {
+	if err := c.db.Model(&model.ContributeRecordModel{}).Where("project_id = ?", projectId).Select("COUNT(DISTINCT address)").Scan(&stats.UniqueContributors).Error; err != nil {
 		return nil, fmt.Errorf("获取唯一贡献者数量失败: %w", err)
 	}
 

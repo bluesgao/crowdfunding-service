@@ -20,14 +20,14 @@ func NewEventLogic(db *gorm.DB) *EventLogic {
 }
 
 // CreateEvent 创建事件记录
-func (e *EventLogic) CreateEvent(event *model.Event) error {
+func (e *EventLogic) CreateEvent(event *model.EventModel) error {
 	// 验证事件数据
 	if err := e.validateEvent(event); err != nil {
 		return err
 	}
 
 	// 检查事件是否已存在
-	var existingEvent model.Event
+	var existingEvent model.EventModel
 	if err := e.db.Where("tx_hash = ? AND log_index = ?", event.TxHash, event.LogIndex).First(&existingEvent).Error; err == nil {
 		return errors.New("事件已存在")
 	}
@@ -41,14 +41,14 @@ func (e *EventLogic) CreateEvent(event *model.Event) error {
 }
 
 // GetEvents 获取事件列表
-func (e *EventLogic) GetEvents(projectID uint, eventType string, page, pageSize int) ([]model.Event, int64, error) {
-	var events []model.Event
+func (e *EventLogic) GetEvents(projectId int64, eventType string, page, pageSize int) ([]model.EventModel, int64, error) {
+	var events []model.EventModel
 	var total int64
 
 	// 构建查询条件
-	query := e.db.Model(&model.Event{})
-	if projectID > 0 {
-		query = query.Where("project_id = ?", projectID)
+	query := e.db.Model(&model.EventModel{})
+	if projectId > 0 {
+		query = query.Where("project_id = ?", projectId)
 	}
 	if eventType != "" {
 		query = query.Where("event_type = ?", eventType)
@@ -69,8 +69,8 @@ func (e *EventLogic) GetEvents(projectID uint, eventType string, page, pageSize 
 }
 
 // GetEvent 获取单个事件
-func (e *EventLogic) GetEvent(id uint) (*model.Event, error) {
-	var event model.Event
+func (e *EventLogic) GetEvent(id int64) (*model.EventModel, error) {
+	var event model.EventModel
 	if err := e.db.First(&event, id).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, errors.New("事件不存在")
@@ -82,8 +82,8 @@ func (e *EventLogic) GetEvent(id uint) (*model.Event, error) {
 }
 
 // GetEventByTxHash 根据交易哈希获取事件
-func (e *EventLogic) GetEventByTxHash(txHash string) (*model.Event, error) {
-	var event model.Event
+func (e *EventLogic) GetEventByTxHash(txHash string) (*model.EventModel, error) {
+	var event model.EventModel
 	if err := e.db.Where("tx_hash = ?", txHash).First(&event).Error; err != nil {
 		if err == gorm.ErrRecordNotFound {
 			return nil, errors.New("事件不存在")
@@ -95,8 +95,8 @@ func (e *EventLogic) GetEventByTxHash(txHash string) (*model.Event, error) {
 }
 
 // UpdateEventProcessed 更新事件处理状态
-func (e *EventLogic) UpdateEventProcessed(id uint, processed bool) error {
-	if err := e.db.Model(&model.Event{}).Where("id = ?", id).Update("processed", processed).Error; err != nil {
+func (e *EventLogic) UpdateEventProcessed(id int64, processed bool) error {
+	if err := e.db.Model(&model.EventModel{}).Where("id = ?", id).Update("processed", processed).Error; err != nil {
 		return fmt.Errorf("更新事件处理状态失败: %w", err)
 	}
 
@@ -104,8 +104,8 @@ func (e *EventLogic) UpdateEventProcessed(id uint, processed bool) error {
 }
 
 // GetUnprocessedEvents 获取未处理的事件
-func (e *EventLogic) GetUnprocessedEvents(limit int) ([]model.Event, error) {
-	var events []model.Event
+func (e *EventLogic) GetUnprocessedEvents(limit int) ([]model.EventModel, error) {
+	var events []model.EventModel
 	if err := e.db.Where("processed = ?", false).
 		Order("created_at ASC").
 		Limit(limit).
@@ -117,7 +117,7 @@ func (e *EventLogic) GetUnprocessedEvents(limit int) ([]model.Event, error) {
 }
 
 // GetEventStatistics 获取事件统计信息
-func (e *EventLogic) GetEventStatistics(projectID uint) (map[string]interface{}, error) {
+func (e *EventLogic) GetEventStatistics(projectId int64) (map[string]interface{}, error) {
 	var stats struct {
 		TotalEvents     int64 `json:"total_events"`
 		ProcessedEvents int64 `json:"processed_events"`
@@ -125,9 +125,9 @@ func (e *EventLogic) GetEventStatistics(projectID uint) (map[string]interface{},
 	}
 
 	// 构建查询条件
-	query := e.db.Model(&model.Event{})
-	if projectID > 0 {
-		query = query.Where("project_id = ?", projectID)
+	query := e.db.Model(&model.EventModel{})
+	if projectId > 0 {
+		query = query.Where("project_id = ?", projectId)
 	}
 
 	// 总事件数
@@ -153,12 +153,12 @@ func (e *EventLogic) GetEventStatistics(projectID uint) (map[string]interface{},
 }
 
 // GetEventsByType 根据事件类型获取事件
-func (e *EventLogic) GetEventsByType(eventType string, page, pageSize int) ([]model.Event, int64, error) {
-	var events []model.Event
+func (e *EventLogic) GetEventsByType(eventType string, page, pageSize int) ([]model.EventModel, int64, error) {
+	var events []model.EventModel
 	var total int64
 
 	// 获取总数
-	if err := e.db.Model(&model.Event{}).Where("event_type = ?", eventType).Count(&total).Error; err != nil {
+	if err := e.db.Model(&model.EventModel{}).Where("event_type = ?", eventType).Count(&total).Error; err != nil {
 		return nil, 0, fmt.Errorf("获取事件总数失败: %w", err)
 	}
 
@@ -176,12 +176,12 @@ func (e *EventLogic) GetEventsByType(eventType string, page, pageSize int) ([]mo
 }
 
 // GetEventsByTimeRange 根据时间范围获取事件
-func (e *EventLogic) GetEventsByTimeRange(startTime, endTime time.Time, page, pageSize int) ([]model.Event, int64, error) {
-	var events []model.Event
+func (e *EventLogic) GetEventsByTimeRange(startTime, endTime time.Time, page, pageSize int) ([]model.EventModel, int64, error) {
+	var events []model.EventModel
 	var total int64
 
 	// 获取总数
-	if err := e.db.Model(&model.Event{}).Where("created_at BETWEEN ? AND ?", startTime, endTime).Count(&total).Error; err != nil {
+	if err := e.db.Model(&model.EventModel{}).Where("created_at BETWEEN ? AND ?", startTime, endTime).Count(&total).Error; err != nil {
 		return nil, 0, fmt.Errorf("获取事件总数失败: %w", err)
 	}
 
@@ -199,8 +199,8 @@ func (e *EventLogic) GetEventsByTimeRange(startTime, endTime time.Time, page, pa
 }
 
 // validateEvent 验证事件数据
-func (e *EventLogic) validateEvent(event *model.Event) error {
-	if event.ProjectID == 0 {
+func (e *EventLogic) validateEvent(event *model.EventModel) error {
+	if event.ProjectId == 0 {
 		return errors.New("项目ID不能为空")
 	}
 	if event.EventType == "" {
@@ -218,7 +218,7 @@ func (e *EventLogic) validateEvent(event *model.Event) error {
 
 // GetLastProcessedBlock 获取最后处理的区块号
 func (e *EventLogic) GetLastProcessedBlock() (uint64, error) {
-	var lastEvent model.Event
+	var lastEvent model.EventModel
 	err := e.db.Order("block_num DESC").First(&lastEvent).Error
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
@@ -226,13 +226,13 @@ func (e *EventLogic) GetLastProcessedBlock() (uint64, error) {
 		}
 		return 0, fmt.Errorf("获取最后处理区块号失败: %w", err)
 	}
-	return lastEvent.BlockNum, nil
+	return uint64(lastEvent.BlockNum), nil
 }
 
 // CheckEventExists 检查事件是否已存在
-func (e *EventLogic) CheckEventExists(txHash string, logIndex uint) (bool, error) {
+func (e *EventLogic) CheckEventExists(txHash string, logIndex int) (bool, error) {
 	var count int64
-	err := e.db.Model(&model.Event{}).Where("tx_hash = ? AND log_index = ?", txHash, logIndex).Count(&count).Error
+	err := e.db.Model(&model.EventModel{}).Where("tx_hash = ? AND log_index = ?", txHash, logIndex).Count(&count).Error
 	if err != nil {
 		return false, fmt.Errorf("检查事件是否存在失败: %w", err)
 	}

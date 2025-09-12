@@ -8,6 +8,7 @@ import (
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
+	"gorm.io/gorm/schema"
 )
 
 func Init(cfg config.DatabaseConfig) (*gorm.DB, error) {
@@ -16,6 +17,9 @@ func Init(cfg config.DatabaseConfig) (*gorm.DB, error) {
 
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Info),
+		NamingStrategy: &schema.NamingStrategy{
+			SingularTable: true, // 禁用复数表名
+		},
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to database: %w", err)
@@ -23,13 +27,13 @@ func Init(cfg config.DatabaseConfig) (*gorm.DB, error) {
 
 	// 自动迁移
 	if err := db.AutoMigrate(
-		&model.Project{},
-		&model.ContributeRecord{},
-		&model.Event{},
-		&model.RefundRecord{},
-		&model.SettlementRecord{},
-		&model.ProjectTeam{},
-		&model.ProjectMilestone{},
+		&model.ProjectModel{},
+		&model.ContributeRecordModel{},
+		&model.EventModel{},
+		&model.RefundRecordModel{},
+		&model.SettlementRecordModel{},
+		&model.ProjectTeamModel{},
+		&model.ProjectMilestoneModel{},
 	); err != nil {
 		return nil, fmt.Errorf("failed to migrate database: %w", err)
 	}

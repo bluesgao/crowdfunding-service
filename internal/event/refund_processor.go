@@ -21,15 +21,15 @@ func NewRefundProcessor(refundLogic *logic.RefundRecordLogic) *RefundProcessor {
 }
 
 // Process 处理退款事件
-func (p *RefundProcessor) Process(event *model.Event, eventData map[string]interface{}) error {
+func (p *RefundProcessor) Process(event *model.EventModel, eventData map[string]interface{}) error {
 	// 创建退款记录
 	refundee := eventData["refundee"].(string)
 	amount := eventData["amount"].(*big.Int)
 	reason := eventData["reason"].(string)
 
-	refundRecord := model.RefundRecord{
-		ProjectID:    event.ProjectID,
-		Amount:       float64(amount.Int64()) / 1e18, // 转换为ETH
+	refundRecord := model.RefundRecordModel{
+		ProjectId:    event.ProjectId,
+		Amount:       amount.Int64(), // 保持wei单位
 		Address:      refundee,
 		TxHash:       event.TxHash,
 		BlockNum:     event.BlockNum,
@@ -44,7 +44,7 @@ func (p *RefundProcessor) Process(event *model.Event, eventData map[string]inter
 	}
 
 	log.Printf("Processed refund: %f ETH to %s for project %d",
-		refundRecord.Amount, refundee, event.ProjectID)
+		refundRecord.Amount, refundee, event.ProjectId)
 
 	return nil
 }
