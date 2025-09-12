@@ -1,8 +1,7 @@
 package config
 
 import (
-	"log"
-
+	"github.com/blues/cfs/internal/logger"
 	"github.com/spf13/viper"
 )
 
@@ -73,12 +72,12 @@ func Load() *Config {
 	viper.AutomaticEnv()
 
 	if err := viper.ReadInConfig(); err != nil {
-		log.Printf("Warning: Could not read config file: %v", err)
+		logger.Warn("Warning: Could not read config file: %v", err)
 	}
 
 	var config Config
 	if err := viper.Unmarshal(&config); err != nil {
-		log.Fatalf("Unable to decode config into struct: %v", err)
+		logger.Fatal("Unable to decode config into struct: %v", err)
 	}
 
 	return &config

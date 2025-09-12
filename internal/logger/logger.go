@@ -3,12 +3,13 @@ package logger
 import (
 	"fmt"
 	"io"
-	"log"
 	"os"
-	"path/filepath"
-	"runtime"
 	"strings"
 	"time"
+
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
+	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 // LogLevel 日志级别
@@ -24,189 +25,314 @@ const (
 
 // Logger 自定义日志器
 type Logger struct {
-	level  LogLevel
-	logger *log.Logger
+	zapLogger *zap.Logger
 }
 
-var (
-	// 默认日志器
-	defaultLogger *Logger
-)
+// LumberjackConfig lumberjack 配置
+type LumberjackConfig struct {
+	Filename   string // 日志文件路径
+	MaxSize    int    // 每个日志文件的最大大小（MB）
+	MaxBackups int    // 保留的旧日志文件数量
+	MaxAge     int    // 保留日志文件的天数
+	Compress   bool   // 是否压缩旧日志文件
+}
 
-// 初始化默认日志器
+var defaultLogger *Logger
+
 func init() {
-	defaultLogger = New(INFO, os.Stdout)
+	var err error
+	defaultLogger, err = New(INFO)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to initialize logger: %v", err))
+	}
 }
 
 // New 创建新的日志器
-func New(level LogLevel, output io.Writer) *Logger {
-	return &Logger{
-		level:  level,
-		logger: log.New(output, "", 0), // 不使用默认前缀，我们自己控制格式
+func New(level LogLevel) (*Logger, error) {
+	config := zap.NewProductionConfig()
+	config.Level = zap.NewAtomicLevelAt(zapLevelFromLogLevel(level))
+
+	// 设置输出格式
+	config.EncoderConfig.TimeKey = "timestamp"
+	config.EncoderConfig.EncodeTime = func(t time.Time, enc zapcore.PrimitiveArrayEncoder) {
+		enc.AppendString(t.Format("2006-01-02 15:04:05"))
 	}
+	config.EncoderConfig.CallerKey = "caller"
+	config.EncoderConfig.EncodeCaller = zapcore.ShortCallerEncoder
+	config.EncoderConfig.LevelKey = "level"
+	config.EncoderConfig.EncodeLevel = zapcore.CapitalLevelEncoder
+	config.EncoderConfig.MessageKey = "message"
+	config.EncoderConfig.EncodeName = zapcore.FullNameEncoder
+
+	if level == DEBUG {
+		config = zap.NewDevelopmentConfig()
+		config.Level = zap.NewAtomicLevelAt(zapLevelFromLogLevel(level))
+	}
+
+	zapLogger, err := config.Build(zap.AddCallerSkip(2))
+	if err != nil {
+		return nil, err
+	}
+
+	return &Logger{zapLogger: zapLogger}, nil
+}
+
+// NewWithConfig 使用自定义配置创建日志器
+func NewWithConfig(config zap.Config) (*Logger, error) {
+	zapLogger, err := config.Build(zap.AddCallerSkip(2))
+	if err != nil {
+		return nil, err
+	}
+	return &Logger{zapLogger: zapLogger}, nil
+}
+
+// NewWithFileRotation 创建支持文件轮转的日志器
+func NewWithFileRotation(level LogLevel, logFile string) (*Logger, error) {
+	config := LumberjackConfig{
+		Filename:   logFile,
+		MaxSize:    100,
+		MaxBackups: 3,
+		MaxAge:     28,
+		Compress:   true,
+	}
+	return NewWithLumberjackConfig(level, config)
+}
+
+// NewWithLumberjackConfig 使用自定义 lumberjack 配置创建日志器
+func NewWithLumberjackConfig(level LogLevel, config LumberjackConfig) (*Logger, error) {
+	// 设置默认值
+	if config.MaxSize == 0 {
+		config.MaxSize = 100
+	}
+	if config.MaxBackups == 0 {
+		config.MaxBackups = 3
+	}
+	if config.MaxAge == 0 {
+		config.MaxAge = 28
+	}
+
+	lumberjackLogger := &lumberjack.Logger{
+		Filename:   config.Filename,
+		MaxSize:    config.MaxSize,
+		MaxBackups: config.MaxBackups,
+		MaxAge:     config.MaxAge,
+		Compress:   config.Compress,
+	}
+
+	zapConfig := zap.NewProductionConfig()
+	zapConfig.Level = zap.NewAtomicLevelAt(zapLevelFromLogLevel(level))
+
+	zapConfig.EncoderConfig.TimeKey = "timestamp"
+	zapConfig.EncoderConfig.EncodeTime = func(t time.Time, enc zapcore.PrimitiveArrayEncoder) {
+		enc.AppendString(t.Format("2006-01-02 15:04:05"))
+	}
+	zapConfig.EncoderConfig.CallerKey = "caller"
+	zapConfig.EncoderConfig.EncodeCaller = zapcore.ShortCallerEncoder
+	zapConfig.EncoderConfig.LevelKey = "level"
+	zapConfig.EncoderConfig.EncodeLevel = zapcore.CapitalLevelEncoder
+	zapConfig.EncoderConfig.MessageKey = "message"
+	zapConfig.EncoderConfig.EncodeName = zapcore.FullNameEncoder
+
+	if level == DEBUG {
+		zapConfig = zap.NewDevelopmentConfig()
+		zapConfig.Level = zap.NewAtomicLevelAt(zapLevelFromLogLevel(level))
+	}
+
+	encoder := zapcore.NewJSONEncoder(zapConfig.EncoderConfig)
+	core := zapcore.NewCore(encoder, zapcore.AddSync(lumberjackLogger), zapConfig.Level)
+	zapLogger := zap.New(core, zap.AddCallerSkip(2), zap.AddCaller())
+
+	return &Logger{zapLogger: zapLogger}, nil
 }
 
 // SetLevel 设置日志级别
 func (l *Logger) SetLevel(level LogLevel) {
-	l.level = level
-}
-
-// SetOutput 设置输出目标
-func (l *Logger) SetOutput(output io.Writer) {
-	l.logger.SetOutput(output)
-}
-
-// getCallerInfo 获取调用者信息
-func (l *Logger) getCallerInfo() (string, int) {
-	// 跳过当前函数和调用日志函数的函数
-	_, file, line, ok := runtime.Caller(3)
-	if !ok {
-		return "unknown", 0
+	newLogger, err := New(level)
+	if err == nil {
+		l.zapLogger.Sync()
+		l.zapLogger = newLogger.zapLogger
 	}
-
-	// 只保留文件名，不包含完整路径
-	filename := filepath.Base(file)
-	return filename, line
-}
-
-// formatMessage 格式化日志消息
-func (l *Logger) formatMessage(level LogLevel, format string, args ...interface{}) string {
-	// 获取调用者信息
-	filename, line := l.getCallerInfo()
-
-	// 获取当前时间
-	timestamp := time.Now().Format("2006-01-02 15:04:05")
-
-	// 日志级别字符串
-	levelStr := ""
-	switch level {
-	case DEBUG:
-		levelStr = "DEBUG"
-	case INFO:
-		levelStr = "INFO"
-	case WARN:
-		levelStr = "WARN"
-	case ERROR:
-		levelStr = "ERROR"
-	case FATAL:
-		levelStr = "FATAL"
-	}
-
-	// 格式化消息
-	message := format
-	if len(args) > 0 {
-		message = fmt.Sprintf(format, args...)
-	}
-
-	// 组合最终格式: [时间] [级别] [文件:行号] 消息
-	return fmt.Sprintf("[%s] [%s] [%s:%d] %s", timestamp, levelStr, filename, line, message)
 }
 
 // Debug 调试日志
 func (l *Logger) Debug(format string, args ...interface{}) {
-	if l.level <= DEBUG {
-		l.logger.Println(l.formatMessage(DEBUG, format, args...))
-	}
+	l.zapLogger.Debug(fmt.Sprintf(format, args...))
 }
 
 // Info 信息日志
 func (l *Logger) Info(format string, args ...interface{}) {
-	if l.level <= INFO {
-		l.logger.Println(l.formatMessage(INFO, format, args...))
-	}
+	l.zapLogger.Info(fmt.Sprintf(format, args...))
 }
 
 // Warn 警告日志
 func (l *Logger) Warn(format string, args ...interface{}) {
-	if l.level <= WARN {
-		l.logger.Println(l.formatMessage(WARN, format, args...))
-	}
+	l.zapLogger.Warn(fmt.Sprintf(format, args...))
 }
 
 // Error 错误日志
 func (l *Logger) Error(format string, args ...interface{}) {
-	if l.level <= ERROR {
-		l.logger.Println(l.formatMessage(ERROR, format, args...))
-	}
+	l.zapLogger.Error(fmt.Sprintf(format, args...))
 }
 
-// Fatal 致命错误日志（会调用os.Exit(1)）
+// Fatal 致命错误日志
 func (l *Logger) Fatal(format string, args ...interface{}) {
-	if l.level <= FATAL {
-		l.logger.Println(l.formatMessage(FATAL, format, args...))
-		os.Exit(1)
-	}
+	l.zapLogger.Fatal(fmt.Sprintf(format, args...))
 }
 
-// 全局函数，使用默认日志器
+// Sync 同步日志
+func (l *Logger) Sync() {
+	l.zapLogger.Sync()
+}
 
-// SetLevel 设置默认日志器级别
+// With 添加字段
+func (l *Logger) With(fields ...zap.Field) *Logger {
+	return &Logger{zapLogger: l.zapLogger.With(fields...)}
+}
+
+// 全局函数
 func SetLevel(level LogLevel) {
 	defaultLogger.SetLevel(level)
 }
 
-// SetOutput 设置默认日志器输出
-func SetOutput(output io.Writer) {
-	defaultLogger.SetOutput(output)
+// SetDefaultLogger 设置默认日志器
+func SetDefaultLogger(l *Logger) {
+	if defaultLogger != nil {
+		defaultLogger.Sync()
+	}
+	defaultLogger = l
 }
 
-// Debug 调试日志
 func Debug(format string, args ...interface{}) {
 	defaultLogger.Debug(format, args...)
 }
 
-// Info 信息日志
 func Info(format string, args ...interface{}) {
 	defaultLogger.Info(format, args...)
 }
 
-// Warn 警告日志
 func Warn(format string, args ...interface{}) {
 	defaultLogger.Warn(format, args...)
 }
 
-// Error 错误日志
 func Error(format string, args ...interface{}) {
 	defaultLogger.Error(format, args...)
 }
 
-// Fatal 致命错误日志
 func Fatal(format string, args ...interface{}) {
 	defaultLogger.Fatal(format, args...)
 }
 
-// 兼容标准库log包的函数
+func Sync() {
+	defaultLogger.Sync()
+}
 
-// Printf 兼容标准库的Printf
+func With(fields ...zap.Field) *Logger {
+	return defaultLogger.With(fields...)
+}
+
+// 兼容性函数
 func Printf(format string, args ...interface{}) {
-	defaultLogger.Info(format, args...)
+	Info(format, args...)
 }
 
-// Println 兼容标准库的Println
 func Println(args ...interface{}) {
-	message := fmt.Sprint(args...)
-	defaultLogger.Info(message)
+	Info(strings.Join(strings.Fields(fmt.Sprint(args...)), " "))
 }
 
-// Fatalf 兼容标准库的Fatalf
 func Fatalf(format string, args ...interface{}) {
-	defaultLogger.Fatal(format, args...)
+	Fatal(format, args...)
 }
 
-// 日志级别字符串转换
+// ParseLogLevel 解析日志级别字符串
 func ParseLogLevel(level string) LogLevel {
-	switch strings.ToUpper(level) {
-	case "DEBUG":
+	switch strings.ToLower(level) {
+	case "debug":
 		return DEBUG
-	case "INFO":
+	case "info":
 		return INFO
-	case "WARN", "WARNING":
+	case "warn", "warning":
 		return WARN
-	case "ERROR":
+	case "error":
 		return ERROR
-	case "FATAL":
+	case "fatal":
 		return FATAL
 	default:
 		return INFO
 	}
+}
+
+// zapLevelFromLogLevel 转换日志级别
+func zapLevelFromLogLevel(level LogLevel) zapcore.Level {
+	switch level {
+	case DEBUG:
+		return zapcore.DebugLevel
+	case INFO:
+		return zapcore.InfoLevel
+	case WARN:
+		return zapcore.WarnLevel
+	case ERROR:
+		return zapcore.ErrorLevel
+	case FATAL:
+		return zapcore.FatalLevel
+	default:
+		return zapcore.InfoLevel
+	}
+}
+
+// GetZapLogger 获取底层的zap logger
+func (l *Logger) GetZapLogger() *zap.Logger {
+	return l.zapLogger
+}
+
+// GetDefaultZapLogger 获取默认的zap logger
+func GetDefaultZapLogger() *zap.Logger {
+	return defaultLogger.GetZapLogger()
+}
+
+// RedirectStdout 重定向标准输出到我们的logger
+func RedirectStdout() {
+	// 创建一个管道
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		Error("Failed to create pipe: %v", err)
+		return
+	}
+
+	// 保存原始的stdout
+	originalStdout := os.Stdout
+
+	// 重定向stdout到我们的writer
+	os.Stdout = writer
+
+	// 启动goroutine来读取管道中的数据
+	go func() {
+		defer reader.Close()
+		buffer := make([]byte, 1024)
+		for {
+			n, err := reader.Read(buffer)
+			if err != nil {
+				if err != io.EOF {
+					Error("Failed to read from pipe: %v", err)
+				}
+				break
+			}
+			if n > 0 {
+				// 将读取到的数据写入我们的logger
+				message := strings.TrimSpace(string(buffer[:n]))
+				if message != "" {
+					Info("STDOUT: %s", message)
+				}
+			}
+		}
+	}()
+
+	// 恢复stdout的函数
+	restoreStdout := func() {
+		writer.Close()
+		os.Stdout = originalStdout
+	}
+
+	// 注册清理函数
+	// 注意：这个函数需要在程序退出时调用
+	_ = restoreStdout
 }

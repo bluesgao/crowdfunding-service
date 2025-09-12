@@ -1,8 +1,11 @@
 package router
 
 import (
+	"time"
+
 	"github.com/blues/cfs/internal/config"
 	"github.com/blues/cfs/internal/handler"
+	"github.com/blues/cfs/internal/logger"
 	"github.com/gin-gonic/gin"
 )
 
@@ -15,7 +18,7 @@ func Setup(
 	r := gin.Default()
 
 	// 中间件
-	r.Use(gin.Logger())
+	r.Use(customLoggerMiddleware())
 	r.Use(gin.Recovery())
 	r.Use(corsMiddleware())
 
@@ -68,6 +71,39 @@ func Setup(
 	}
 
 	return r
+}
+
+// customLoggerMiddleware 自定义日志中间件，使用我们的logger系统
+func customLoggerMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		start := time.Now()
+		path := c.Request.URL.Path
+		raw := c.Request.URL.RawQuery
+
+		// 处理请求
+		c.Next()
+
+		// 计算处理时间
+		latency := time.Since(start)
+		clientIP := c.ClientIP()
+		method := c.Request.Method
+		statusCode := c.Writer.Status()
+		bodySize := c.Writer.Size()
+
+		if raw != "" {
+			path = path + "?" + raw
+		}
+
+		// 根据状态码选择日志级别
+		switch {
+		case statusCode >= 500:
+			logger.Error("HTTP %s %s %d %v %s %d", method, path, statusCode, latency, clientIP, bodySize)
+		case statusCode >= 400:
+			logger.Warn("HTTP %s %s %d %v %s %d", method, path, statusCode, latency, clientIP, bodySize)
+		default:
+			logger.Info("HTTP %s %s %d %v %s %d", method, path, statusCode, latency, clientIP, bodySize)
+		}
+	}
 }
 
 // CORS中间件

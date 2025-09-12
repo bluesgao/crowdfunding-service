@@ -1,9 +1,6 @@
 package main
 
 import (
-	"os"
-	"path/filepath"
-
 	"github.com/blues/cfs/internal/config"
 	"github.com/blues/cfs/internal/database"
 	"github.com/blues/cfs/internal/ethereum"
@@ -74,31 +71,30 @@ func main() {
 
 // initLogger 初始化日志器
 func initLogger(logCfg config.LogConfig) {
-	// 设置日志级别
 	level := logger.ParseLogLevel(logCfg.Level)
-	logger.SetLevel(level)
 
-	// 设置输出目标
-	switch logCfg.Output {
-	case "stderr":
-		logger.SetOutput(os.Stderr)
-	case "file":
-		// 确保日志目录存在
-		logDir := filepath.Dir(logCfg.File)
-		if err := os.MkdirAll(logDir, 0755); err != nil {
-			logger.Fatalf("Failed to create log directory: %v", err)
+	// 根据配置选择日志输出方式
+	if logCfg.Output == "file" {
+		// 使用文件轮转日志
+		config := logger.LumberjackConfig{
+			Filename:   logCfg.File,
+			MaxSize:    100,  // 100MB
+			MaxBackups: 5,    // 保留5个备份
+			MaxAge:     30,   // 保留30天
+			Compress:   true, // 压缩旧文件
 		}
 
-		// 打开日志文件
-		logFile, err := os.OpenFile(logCfg.File, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+		fileLogger, err := logger.NewWithLumberjackConfig(level, config)
 		if err != nil {
-			logger.Fatalf("Failed to open log file: %v", err)
+			panic("Failed to initialize file logger: " + err.Error())
 		}
 
-		logger.SetOutput(logFile)
-	default: // stdout
-		logger.SetOutput(os.Stdout)
+		// 替换默认日志器
+		logger.SetDefaultLogger(fileLogger)
+		logger.Info("Logger initialized with level: %s, output: %s, file: %s", logCfg.Level, logCfg.Output, logCfg.File)
+	} else {
+		// 使用标准输出
+		logger.SetLevel(level)
+		logger.Info("Logger initialized with level: %s, output: %s", logCfg.Level, logCfg.Output)
 	}
-
-	logger.Info("Logger initialized with level: %s, output: %s", logCfg.Level, logCfg.Output)
 }

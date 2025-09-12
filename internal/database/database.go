@@ -7,7 +7,7 @@ import (
 	"github.com/blues/cfs/internal/model"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
-	"gorm.io/gorm/logger"
+	gormLogger "gorm.io/gorm/logger"
 	"gorm.io/gorm/schema"
 )
 
@@ -16,7 +16,7 @@ func Init(cfg config.DatabaseConfig) (*gorm.DB, error) {
 		cfg.Host, cfg.Port, cfg.User, cfg.Password, cfg.DBName, cfg.SSLMode)
 
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
-		Logger: logger.Default.LogMode(logger.Info),
+		Logger: gormLogger.Default.LogMode(gormLogger.Info), // 禁用 GORM 的默认日志输出
 		NamingStrategy: &schema.NamingStrategy{
 			SingularTable: true, // 禁用复数表名
 		},

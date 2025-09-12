@@ -1,9 +1,9 @@
 package event
 
 import (
-	"log"
 	"math/big"
 
+	"github.com/blues/cfs/internal/logger"
 	"github.com/blues/cfs/internal/logic"
 	"github.com/blues/cfs/internal/model"
 )
@@ -36,11 +36,11 @@ func (p *ContributeProcessor) Process(event *model.EventModel, eventData map[str
 
 	// 通过logic层创建贡献记录
 	if err := p.contributeLogic.CreateContributeRecord(&contribution); err != nil {
-		log.Printf("Failed to create contribution record: %v", err)
+		logger.Error("Failed to create contribution record: %v", err)
 		return err
 	}
 
-	log.Printf("Processed contribution: %f ETH from %s to project %d",
+	logger.Info("Processed contribution: %f ETH from %s to project %d",
 		contribution.Amount, contributor, event.ProjectId)
 
 	return nil

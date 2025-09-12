@@ -1,9 +1,9 @@
 package event
 
 import (
-	"log"
 	"math/big"
 
+	"github.com/blues/cfs/internal/logger"
 	"github.com/blues/cfs/internal/logic"
 	"github.com/blues/cfs/internal/model"
 )
@@ -39,11 +39,11 @@ func (p *RefundProcessor) Process(event *model.EventModel, eventData map[string]
 
 	// 通过logic层创建退款记录
 	if err := p.refundLogic.CreateRefundRecord(&refundRecord); err != nil {
-		log.Printf("Failed to create refund record: %v", err)
+		logger.Error("Failed to create refund record: %v", err)
 		return err
 	}
 
-	log.Printf("Processed refund: %f ETH to %s for project %d",
+	logger.Info("Processed refund: %f ETH to %s for project %d",
 		refundRecord.Amount, refundee, event.ProjectId)
 
 	return nil

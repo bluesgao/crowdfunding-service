@@ -4,10 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/blues/cfs/internal/ethereum"
+	"github.com/blues/cfs/internal/logger"
 	"github.com/blues/cfs/internal/logic"
 	"github.com/blues/cfs/internal/model"
 	"github.com/ethereum/go-ethereum/core/types"
@@ -53,11 +53,11 @@ func NewMonitor(
 func (m *Monitor) Start() error {
 	// 获取最后处理的区块号
 	if err := m.loadLastBlock(); err != nil {
-		log.Printf("Failed to load last block, starting from config: %v", err)
+		logger.Warn("Failed to load last block, starting from config: %v", err)
 		m.lastBlock = m.ethClient.GetStartBlock()
 	}
 
-	log.Printf("Starting blockchain monitor from block %d", m.lastBlock)
+	logger.Info("Starting blockchain monitor from block %d", m.lastBlock)
 
 	// 启动监控循环
 	go m.monitorLoop()
@@ -81,7 +81,7 @@ func (m *Monitor) loadLastBlock() error {
 	} else {
 		m.lastBlock = int64(lastBlock)
 	}
-	log.Printf("Loaded last block %d", lastBlock)
+	logger.Info("Loaded last block %d", lastBlock)
 	return nil
 }
 
@@ -93,11 +93,11 @@ func (m *Monitor) monitorLoop() {
 	for {
 		select {
 		case <-m.ctx.Done():
-			log.Println("Monitor stopped")
+			logger.Info("Monitor stopped")
 			return
 		case <-ticker.C:
 			if err := m.processNewBlocks(); err != nil {
-				log.Printf("Error processing blocks: %v", err)
+				logger.Error("Error processing blocks: %v", err)
 			}
 		}
 	}
@@ -114,7 +114,7 @@ func (m *Monitor) processNewBlocks() error {
 	// 处理从lastBlock到currentBlock的所有区块
 	for blockNum := m.lastBlock + 1; blockNum <= currentBlock; blockNum++ {
 		if err := m.processBlock(blockNum); err != nil {
-			log.Printf("Error processing block %d: %v", blockNum, err)
+			logger.Error("Error processing block %d: %v", blockNum, err)
 			continue
 		}
 		m.lastBlock = blockNum
@@ -125,7 +125,7 @@ func (m *Monitor) processNewBlocks() error {
 
 // processBlock 处理单个区块
 func (m *Monitor) processBlock(blockNum int64) error {
-	log.Printf("Processing block %d", blockNum)
+	logger.Debug("Processing block %d", blockNum)
 
 	// 获取区块交易
 	transactions, err := m.ethClient.GetBlockTransactions(blockNum)
@@ -134,7 +134,7 @@ func (m *Monitor) processBlock(blockNum int64) error {
 	}
 
 	for _, tx := range transactions {
-		log.Printf("Processing transaction: %v", tx.Hash().Hex())
+		logger.Debug("Processing transaction: %v", tx.Hash().Hex())
 	}
 
 	// 获取区块日志
@@ -146,7 +146,7 @@ func (m *Monitor) processBlock(blockNum int64) error {
 	// 处理每个日志
 	for _, l := range logs {
 		if err := m.processLog(l); err != nil {
-			log.Printf("Error processing log: %v", err)
+			logger.Error("Error processing log: %v", err)
 			continue
 		}
 	}
@@ -198,7 +198,7 @@ func (m *Monitor) processLog(l types.Log) error {
 		return fmt.Errorf("failed to save event: %w", err)
 	}
 
-	log.Printf("Saved event: %s in block %d", event.EventType, l.BlockNumber)
+	logger.Info("Saved event: %s in block %d", event.EventType, l.BlockNumber)
 
 	// 处理事件
 	return m.handleEvent(&event, eventData)
@@ -216,7 +216,7 @@ func (m *Monitor) handleEvent(event *model.EventModel, eventData map[string]inte
 	case "ProjectStatusChanged", "ProjectStatus", "ProjectCreated":
 		err = m.projectProcessor.Process(event, eventData)
 	default:
-		log.Printf("Unknown event type: %s", event.EventType)
+		logger.Warn("Unknown event type: %s", event.EventType)
 		return nil
 	}
 

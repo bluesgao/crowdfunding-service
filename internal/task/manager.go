@@ -1,10 +1,9 @@
 package task
 
 import (
-	"log"
-
 	"github.com/blues/cfs/internal/config"
 	"github.com/blues/cfs/internal/ethereum"
+	"github.com/blues/cfs/internal/logger"
 	"github.com/go-co-op/gocron/v2"
 	"gorm.io/gorm"
 )
@@ -21,7 +20,7 @@ type Manager struct {
 func NewManager(db *gorm.DB, ethClient *ethereum.Client, cfg *config.Config) *Manager {
 	s, err := gocron.NewScheduler()
 	if err != nil {
-		log.Fatalf("Failed to create scheduler: %v", err)
+		logger.Fatal("Failed to create scheduler: %v", err)
 	}
 
 	return &Manager{
@@ -42,7 +41,7 @@ func Start(db *gorm.DB, ethClient *ethereum.Client, cfg *config.Config) {
 	// 启动调度器
 	manager.scheduler.Start()
 
-	log.Println("Task manager started successfully")
+	logger.Info("Task manager started successfully")
 }
 
 // RegisterJobs 注册所有任务
@@ -62,14 +61,14 @@ func (m *Manager) RegisterProjectDeployJob() {
 		gocron.WithSingletonMode(gocron.LimitModeReschedule),
 	)
 	if err != nil {
-		log.Printf("Failed to register job %s: %v", job.GetName(), err)
+		logger.Error("Failed to register job %s: %v", job.GetName(), err)
 	}
 }
 
 // Stop 停止任务管理器
 func (m *Manager) Stop() {
 	if err := m.scheduler.Shutdown(); err != nil {
-		log.Printf("Failed to shutdown scheduler: %v", err)
+		logger.Error("Failed to shutdown scheduler: %v", err)
 	}
-	log.Println("Task manager stopped")
+	logger.Info("Task manager stopped")
 }

@@ -1,11 +1,11 @@
 package task
 
 import (
-	"log"
 	"time"
 
 	"github.com/blues/cfs/internal/config"
 	"github.com/blues/cfs/internal/ethereum"
+	"github.com/blues/cfs/internal/logger"
 	"github.com/blues/cfs/internal/model"
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/go-co-op/gocron/v2"
@@ -40,7 +40,7 @@ func (j *ProjectDeployJob) GetSchedule() gocron.JobDefinition {
 
 // Execute 执行任务
 func (j *ProjectDeployJob) Execute() {
-	log.Println("Starting project deploy task")
+	logger.Info("Starting project deploy task")
 
 	now := time.Now()
 
@@ -50,7 +50,7 @@ func (j *ProjectDeployJob) Execute() {
 		model.ProjectStatusDeploying, now).Find(&projects).Error
 
 	if err != nil {
-		log.Printf("Failed to fetch projects for deployment: %v", err)
+		logger.Error("Failed to fetch projects for deployment: %v", err)
 		return
 	}
 
@@ -59,7 +59,7 @@ func (j *ProjectDeployJob) Execute() {
 	for _, project := range projects {
 		// 检查项目是否已经有合约地址（避免重复部署）
 		if project.ContractAddress != "" {
-			log.Printf("Project %d already has contract address: %s", project.Id, project.ContractAddress)
+			logger.Info("Project %d already has contract address: %s", project.Id, project.ContractAddress)
 			continue
 		}
 
@@ -75,7 +75,7 @@ func (j *ProjectDeployJob) Execute() {
 		)
 
 		if err != nil {
-			log.Printf("Failed to deploy project %d to blockchain: %v", project.Id, err)
+			logger.Error("Failed to deploy project %d to blockchain: %v", project.Id, err)
 			continue
 		}
 
@@ -86,14 +86,14 @@ func (j *ProjectDeployJob) Execute() {
 		}
 
 		if err := j.db.Model(&project).Updates(updates).Error; err != nil {
-			log.Printf("Failed to update project %d after deployment: %v", project.Id, err)
+			logger.Error("Failed to update project %d after deployment: %v", project.Id, err)
 			continue
 		}
 
-		log.Printf("Successfully deployed project %d to blockchain. TxHash: %s",
+		logger.Info("Successfully deployed project %d to blockchain. TxHash: %s",
 			project.Id, txHash.Hex())
 		deployedCount++
 	}
 
-	log.Printf("Project deploy task completed. Deployed %d projects", deployedCount)
+	logger.Info("Project deploy task completed. Deployed %d projects", deployedCount)
 }

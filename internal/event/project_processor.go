@@ -1,8 +1,7 @@
 package event
 
 import (
-	"log"
-
+	"github.com/blues/cfs/internal/logger"
 	"github.com/blues/cfs/internal/logic"
 	"github.com/blues/cfs/internal/model"
 )
@@ -28,7 +27,7 @@ func (p *ProjectProcessor) Process(event *model.EventModel, eventData map[string
 	case "ProjectStatusChanged":
 		return p.processProjectStatusChanged(event, eventData)
 	default:
-		log.Printf("Unknown project event type: %s", event.EventType)
+		logger.Warn("Unknown project event type: %s", event.EventType)
 		return nil
 	}
 }
@@ -38,7 +37,7 @@ func (p *ProjectProcessor) processProjectCreated(event *model.EventModel, eventD
 	// 这里可以根据需要处理项目创建事件
 	// 例如：更新项目的合约地址等
 
-	log.Printf("Processed project creation event for project %d", event.ProjectId)
+	logger.Info("Processed project creation event for project %d", event.ProjectId)
 	return nil
 }
 
@@ -61,16 +60,16 @@ func (p *ProjectProcessor) processProjectStatusChanged(event *model.EventModel, 
 	case 4:
 		projectStatus = model.ProjectStatusCancelled
 	default:
-		log.Printf("Unknown project status: %d", status)
+		logger.Warn("Unknown project status: %d", status)
 		return nil
 	}
 
 	// 通过logic层更新项目状态
 	if err := p.projectLogic.UpdateProjectStatus(event.ProjectId, projectStatus); err != nil {
-		log.Printf("Failed to update project status: %v", err)
+		logger.Error("Failed to update project status: %v", err)
 		return err
 	}
 
-	log.Printf("Updated project %d status to %s", event.ProjectId, projectStatus)
+	logger.Info("Updated project %d status to %s", event.ProjectId, projectStatus)
 	return nil
 }
