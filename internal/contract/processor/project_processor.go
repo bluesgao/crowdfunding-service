@@ -23,7 +23,7 @@ func NewProjectProcessor(db *gorm.DB) *ProjectProcessor {
 // Process 处理所有事件类型
 func (p *ProjectProcessor) Process(event *model.EventModel, eventData map[string]interface{}) error {
 	// 根据事件类型处理不同的事件
-	switch event.EventType {
+	switch event.EventName {
 	case "ProjectCreated":
 		return p.processProjectCreated(event, eventData)
 	case "ProjectStatusChanged":
@@ -33,7 +33,7 @@ func (p *ProjectProcessor) Process(event *model.EventModel, eventData map[string
 	case "RefundProcessed":
 		return p.processRefundProcessed(event, eventData)
 	default:
-		logger.Warn("Unknown event type: %s", event.EventType)
+		logger.Warn("Unknown event name: %s", event.EventName)
 		return nil
 	}
 }
@@ -44,7 +44,7 @@ func (p *ProjectProcessor) processProjectCreated(event *model.EventModel, eventD
 	// 例如：更新项目的合约地址等
 	projectId := eventData["projectId"].(int64)
 
-	logger.Info("Processed project creation event for project %d", projectId)
+	logger.Info("Processed project creation event for project %d from contract %s", projectId, event.ContractName)
 	return nil
 }
 
@@ -139,7 +139,7 @@ func (p *ProjectProcessor) processRefundProcessed(event *model.EventModel, event
 	return nil
 }
 
-// GetEventType 获取支持的事件类型
+// GetEventType 获取支持的事件名称
 func (p *ProjectProcessor) GetEventType() string {
 	return "ProjectCreated" // 主要处理项目创建事件，其他事件通过内部方法处理
 }

@@ -38,25 +38,25 @@ func (pm *ProcessorManager) RegisterProcessor(processor EventProcessor) {
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
 
-	eventType := processor.GetEventType()
-	pm.processors[eventType] = processor
-	logger.Info("Registered processor for event type: %s", eventType)
+	eventName := processor.GetEventType()
+	pm.processors[eventName] = processor
+	logger.Info("Registered processor for event name: %s", eventName)
 }
 
 // GetProcessor 获取指定事件类型的处理器
-func (pm *ProcessorManager) GetProcessor(eventType string) (EventProcessor, bool) {
+func (pm *ProcessorManager) GetProcessor(eventName string) (EventProcessor, bool) {
 	pm.mu.RLock()
 	defer pm.mu.RUnlock()
 
-	processor, exists := pm.processors[eventType]
+	processor, exists := pm.processors[eventName]
 	return processor, exists
 }
 
 // ProcessEvent 处理事件
 func (pm *ProcessorManager) ProcessEvent(event *model.EventModel, eventData map[string]interface{}) error {
-	processor, exists := pm.GetProcessor(event.EventType)
+	processor, exists := pm.GetProcessor(event.EventName)
 	if !exists {
-		logger.Warn("No processor found for event type: %s", event.EventType)
+		logger.Warn("No processor found for event name: %s", event.EventName)
 		return nil // 跳过未知事件类型
 	}
 
@@ -69,20 +69,20 @@ func (pm *ProcessorManager) GetAllProcessors() map[string]EventProcessor {
 	defer pm.mu.RUnlock()
 
 	result := make(map[string]EventProcessor)
-	for eventType, processor := range pm.processors {
-		result[eventType] = processor
+	for eventName, processor := range pm.processors {
+		result[eventName] = processor
 	}
 	return result
 }
 
-// GetSupportedEventTypes 获取支持的事件类型列表
-func (pm *ProcessorManager) GetSupportedEventTypes() []string {
+// GetSupportedEventNames 获取支持的事件名称列表
+func (pm *ProcessorManager) GetSupportedEventNames() []string {
 	pm.mu.RLock()
 	defer pm.mu.RUnlock()
 
-	eventTypes := make([]string, 0, len(pm.processors))
-	for eventType := range pm.processors {
-		eventTypes = append(eventTypes, eventType)
+	eventNames := make([]string, 0, len(pm.processors))
+	for eventName := range pm.processors {
+		eventNames = append(eventNames, eventName)
 	}
-	return eventTypes
+	return eventNames
 }

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math/big"
 	"os"
+	"sync"
 
 	"github.com/blues/cfs/internal/config"
 	"github.com/blues/cfs/internal/logger"
@@ -20,11 +21,13 @@ import (
 
 // Contract 统一合约包装器
 type Contract struct {
-	client   *ethclient.Client
-	contract *bind.BoundContract
-	address  common.Address
-	abi      abi.ABI
-	name     string
+	client   *ethclient.Client   // 以太坊客户端
+	contract *bind.BoundContract // 合约绑定
+	address  common.Address      // 合约地址
+	abi      abi.ABI             // 合约ABI
+	name     string              // 合约名称
+	blockNum int64               // 合约部署的区块号
+	mu       sync.RWMutex        // 读写锁，保护blockNum
 }
 
 // NewContract 创建合约实例
@@ -60,16 +63,29 @@ func NewContract(client *ethclient.Client, name string, cfg config.ContractConfi
 	// 解析合约地址
 	contractAddr := common.HexToAddress(cfg.Address)
 
-	// 创建合约绑定
-	contract := bind.NewBoundContract(contractAddr, parsedABI, client, client, client)
-
-	return &Contract{
+	// 创建合约实例
+	contract := &Contract{
 		client:   client,
-		contract: contract,
+		contract: bind.NewBoundContract(contractAddr, parsedABI, client, client, client),
 		address:  contractAddr,
 		abi:      parsedABI,
 		name:     name,
-	}, nil
+		blockNum: 0, // 默认值，将在后台异步获取
+	}
+
+	// 异步获取合约部署区块号，避免启动时的API限制
+	go func() {
+		if deploymentBlock, err := getContractDeploymentBlock(client, contractAddr); err == nil {
+			contract.mu.Lock()
+			contract.blockNum = deploymentBlock
+			contract.mu.Unlock()
+			logger.Info("Successfully retrieved deployment block %d for contract %s", deploymentBlock, name)
+		} else {
+			logger.Warn("Failed to get deployment block for contract %s: %v", name, err)
+		}
+	}()
+
+	return contract, nil
 }
 
 // GetAddress 获取合约地址
@@ -101,7 +117,7 @@ func (c *Contract) ParseEvent(log types.Log) (map[string]interface{}, error) {
 	// 未知事件
 	logger.Warn("Unknown event signature: %s in contract %s", eventSignature, c.name)
 	return map[string]interface{}{
-		"eventType":   "Unknown",
+		"eventName":   "Unknown",
 		"signature":   eventSignature,
 		"contract":    c.name,
 		"txHash":      log.TxHash.Hex(),
@@ -113,7 +129,7 @@ func (c *Contract) ParseEvent(log types.Log) (map[string]interface{}, error) {
 // parseEvent 解析事件
 func (c *Contract) parseEvent(eventName string, log types.Log, event abi.Event) (map[string]interface{}, error) {
 	result := make(map[string]interface{})
-	result["eventType"] = eventName
+	result["eventName"] = eventName
 	result["contract"] = c.name
 	result["txHash"] = log.TxHash.Hex()
 	result["blockNumber"] = log.BlockNumber
@@ -195,4 +211,44 @@ func (c *Contract) GetCurrentBlockNumber() (int64, error) {
 		return 0, err
 	}
 	return header.Number.Int64(), nil
+}
+
+// GetBlockNum 获取合约部署区块号
+func (c *Contract) GetBlockNum() int64 {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.blockNum
+}
+
+// getContractDeploymentBlock 获取合约部署区块号
+func getContractDeploymentBlock(client *ethclient.Client, address common.Address) (int64, error) {
+	// 通过获取合约代码来确定部署区块
+	// 从最新区块开始向前搜索，直到找到合约代码
+	header, err := client.HeaderByNumber(context.Background(), nil)
+	if err != nil {
+		return 0, err
+	}
+
+	currentBlock := header.Number.Int64()
+
+	// 向前搜索最多1000个区块
+	maxSearchBlocks := int64(1000)
+	startBlock := currentBlock - maxSearchBlocks
+	if startBlock < 0 {
+		startBlock = 0
+	}
+
+	for blockNum := currentBlock; blockNum >= startBlock; blockNum-- {
+		code, err := client.CodeAt(context.Background(), address, big.NewInt(blockNum))
+		if err != nil {
+			continue
+		}
+
+		// 如果代码不为空，说明合约在这个区块存在
+		if len(code) > 0 {
+			return blockNum, nil
+		}
+	}
+
+	return 0, fmt.Errorf("could not find deployment block for contract %s", address.Hex())
 }

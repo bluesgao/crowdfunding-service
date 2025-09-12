@@ -41,7 +41,7 @@ func (e *EventLogic) CreateEvent(event *model.EventModel) error {
 }
 
 // GetEvents 获取事件列表
-func (e *EventLogic) GetEvents(projectId int64, eventType string, page, pageSize int) ([]model.EventModel, int64, error) {
+func (e *EventLogic) GetEvents(projectId int64, eventName string, page, pageSize int) ([]model.EventModel, int64, error) {
 	var events []model.EventModel
 	var total int64
 
@@ -50,8 +50,8 @@ func (e *EventLogic) GetEvents(projectId int64, eventType string, page, pageSize
 	if projectId > 0 {
 		query = query.Where("project_id = ?", projectId)
 	}
-	if eventType != "" {
-		query = query.Where("event_type = ?", eventType)
+	if eventName != "" {
+		query = query.Where("event_name = ?", eventName)
 	}
 
 	// 获取总数
@@ -153,18 +153,18 @@ func (e *EventLogic) GetEventStatistics(projectId int64) (map[string]interface{}
 }
 
 // GetEventsByType 根据事件类型获取事件
-func (e *EventLogic) GetEventsByType(eventType string, page, pageSize int) ([]model.EventModel, int64, error) {
+func (e *EventLogic) GetEventsByType(eventName string, page, pageSize int) ([]model.EventModel, int64, error) {
 	var events []model.EventModel
 	var total int64
 
 	// 获取总数
-	if err := e.db.Model(&model.EventModel{}).Where("event_type = ?", eventType).Count(&total).Error; err != nil {
+	if err := e.db.Model(&model.EventModel{}).Where("event_name = ?", eventName).Count(&total).Error; err != nil {
 		return nil, 0, fmt.Errorf("获取事件总数失败: %w", err)
 	}
 
 	// 分页查询
 	offset := (page - 1) * pageSize
-	if err := e.db.Where("event_type = ?", eventType).
+	if err := e.db.Where("event_name = ?", eventName).
 		Offset(offset).
 		Limit(pageSize).
 		Order("created_at DESC").
@@ -206,8 +206,8 @@ func (e *EventLogic) validateEvent(event *model.EventModel) error {
 	if event.ContractName == "" {
 		return errors.New("合约名称不能为空")
 	}
-	if event.EventType == "" {
-		return errors.New("事件类型不能为空")
+	if event.EventName == "" {
+		return errors.New("事件名称不能为空")
 	}
 	if event.TxHash == "" {
 		return errors.New("交易哈希不能为空")

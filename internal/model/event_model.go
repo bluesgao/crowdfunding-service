@@ -12,7 +12,7 @@ type EventModel struct {
 
 	ContractAddress string `json:"contract_address" gorm:"not null"`
 	ContractName    string `json:"contract_name" gorm:"not null"`
-	EventType       string `json:"event_type" gorm:"not null"`
+	EventName       string `json:"event_name" gorm:"not null"`
 	TxHash          string `json:"tx_hash" gorm:"not null"`
 	BlockNum        int64  `json:"block_num" gorm:"not null"`
 	LogIndex        int64  `json:"log_index"`
