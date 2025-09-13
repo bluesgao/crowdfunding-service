@@ -3,43 +3,43 @@ package task
 import (
 	"time"
 
+	"github.com/blues/cfs/internal/chain"
 	"github.com/blues/cfs/internal/config"
-	"github.com/blues/cfs/internal/contract"
 	"github.com/blues/cfs/internal/logger"
 	"github.com/blues/cfs/internal/model"
 	"github.com/go-co-op/gocron/v2"
 	"gorm.io/gorm"
 )
 
-// ProjectDeployJob 项目部署任务
-type ProjectDeployJob struct {
-	db              *gorm.DB
-	config          *config.Config
-	contractManager *contract.ContractManager
+// ProjectPublishJob 项目发布任务
+type ProjectPublishJob struct {
+	db           *gorm.DB
+	config       *config.Config
+	chainManager *chain.Manager
 }
 
-// NewProjectDeployJob 创建项目部署任务
-func NewProjectDeployJob(db *gorm.DB, cfg *config.Config, contractManager *contract.ContractManager) *ProjectDeployJob {
-	return &ProjectDeployJob{
-		db:              db,
-		config:          cfg,
-		contractManager: contractManager,
+// NewProjectPublishJob 创建项目发布任务
+func NewProjectPublishJob(db *gorm.DB, cfg *config.Config, chainManager *chain.Manager) *ProjectPublishJob {
+	return &ProjectPublishJob{
+		db:           db,
+		config:       cfg,
+		chainManager: chainManager,
 	}
 }
 
 // GetName 获取任务名称
-func (j *ProjectDeployJob) GetName() string {
-	return "project_deploy_updater"
+func (j *ProjectPublishJob) GetName() string {
+	return "project_publish_updater"
 }
 
 // GetSchedule 获取调度配置
-func (j *ProjectDeployJob) GetSchedule() gocron.JobDefinition {
+func (j *ProjectPublishJob) GetSchedule() gocron.JobDefinition {
 	return gocron.DurationJob(time.Duration(j.config.Task.Interval) * time.Second)
 }
 
 // Execute 执行任务
-func (j *ProjectDeployJob) Execute() {
-	logger.Info("Starting project deploy task")
+func (j *ProjectPublishJob) Execute() {
+	logger.Info("Starting project publish task")
 
 	now := time.Now()
 
@@ -63,7 +63,7 @@ func (j *ProjectDeployJob) Execute() {
 		}
 
 		// 获取众筹合约
-		crowdfundingContract, err := j.contractManager.GetContract("crowdfunding")
+		crowdfundingContract, err := j.chainManager.GetContract("crowdfunding")
 		if err != nil {
 			logger.Error("Failed to get crowdfunding contract: %v", err)
 			continue
@@ -73,11 +73,6 @@ func (j *ProjectDeployJob) Execute() {
 		// 实际项目中需要实现这个方法
 		logger.Info("Would create project on contract: %s", crowdfundingContract.GetAddress().Hex())
 		txHash := "0x0000000000000000000000000000000000000000000000000000000000000000"
-
-		if err != nil {
-			logger.Error("Failed to deploy project %d to blockchain: %v", project.Id, err)
-			continue
-		}
 
 		// 更新项目状态和交易哈希
 		updates := map[string]interface{}{
@@ -95,5 +90,5 @@ func (j *ProjectDeployJob) Execute() {
 		deployedCount++
 	}
 
-	logger.Info("Project deploy task completed. Deployed %d projects", deployedCount)
+	logger.Info("Project publish task completed. Deployed %d projects", deployedCount)
 }

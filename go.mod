@@ -8,6 +8,7 @@ require (
 	github.com/ethereum/go-ethereum v1.16.2
 	github.com/gin-gonic/gin v1.9.1
 	github.com/go-co-op/gocron/v2 v2.2.4
+	github.com/panjf2000/ants/v2 v2.11.3
 	github.com/spf13/viper v1.17.0
 	go.uber.org/zap v1.27.0
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1

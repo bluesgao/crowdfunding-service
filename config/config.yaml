@@ -1,3 +1,6 @@
+# 众筹服务配置文件
+# 单链架构，支持多合约部署
+
 server:
   port: "18888" # 服务器端口
   mode: "debug" # 运行模式: debug, release
@@ -10,37 +13,20 @@ database:
   dbname: "crowdfunding" # 数据库名称
   sslmode: "disable" # SSL模式
 
-ethereum:
-  # 以太坊RPC节点URL
-  # 选项1: 使用公共RPC节点 (免费但有限制)
-  # rpc_url: "https://eth.llamarpc.com"
-
-  # 选项2: Infura (需要注册获取API密钥)
-  #rpc_url: "https://mainnet.infura.io/v3/77c2a505d62545429460e39cf6a094a6"
+# 单链配置
+chain:
+  chain_type: "ethereum"
+  chain_id: 11155111
   rpc_url: "https://sepolia.infura.io/v3/77c2a505d62545429460e39cf6a094a6"
-
-  # 选项3: Alchemy (需要注册获取API密钥)
-  # rpc_url: "https://eth-mainnet.g.alchemy.com/v2/YOUR_ALCHEMY_API_KEY"
-
-  # 选项4: 本地节点
-  # rpc_url: "http://localhost:8545"
-
-  # 私钥 (64位十六进制字符串，可以带或不带0x前缀)
-  # 警告: 请确保私钥安全，不要提交到版本控制系统
   private_key: "0x5baa4ed37e003885ecafcb8fe07d2a0bac4740b8d414655055a335ed899cf87b"
 
-  # 全局开始监听的区块号（所有合约的默认值）
-  start_block: 9186975
-
-  # 交易确认数
-  confirmations: 3
-
-  # 多合约配置（简化版）
+  # 该链上的合约配置
   contracts:
     counter:
       address: "0xc90698955C1cBD5d411F75c4adae0ba2D1Db6ef5"
       abi_path: "config/abi/Counter.json"
       enabled: true
+      block_num: 9186975
 
 task:
   # 任务执行间隔(秒)
@@ -48,7 +34,7 @@ task:
 
 log:
   # 日志级别: debug, info, warn, error, fatal
-  level: "info"
+  level: "debug"
 
   # 输出目标: stdout, stderr, file
   output: "stdout"

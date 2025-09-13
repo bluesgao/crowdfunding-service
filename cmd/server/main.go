@@ -1,11 +1,12 @@
 package main
 
 import (
+	"github.com/blues/cfs/internal/chain"
 	"github.com/blues/cfs/internal/config"
-	"github.com/blues/cfs/internal/contract"
 	"github.com/blues/cfs/internal/handler"
 	"github.com/blues/cfs/internal/logger"
 	"github.com/blues/cfs/internal/logic"
+	"github.com/blues/cfs/internal/monitor"
 	"github.com/blues/cfs/internal/repository"
 	"github.com/blues/cfs/internal/router"
 	"github.com/blues/cfs/internal/task"
@@ -25,10 +26,10 @@ func main() {
 		logger.Fatalf("Failed to initialize database: %v", err)
 	}
 
-	// 初始化合约管理器
-	contractManager, err := contract.NewContractManager(cfg.Ethereum)
+	// 初始化链管理器
+	chainManager, err := chain.NewManager(cfg.Chain)
 	if err != nil {
-		logger.Fatalf("Failed to initialize contract manager: %v", err)
+		logger.Fatalf("Failed to initialize chain manager: %v", err)
 	}
 
 	// 设置Gin模式
@@ -51,14 +52,18 @@ func main() {
 	r := router.Setup(projectHandler, contributeHandler, refundHandler, cfg)
 
 	// 启动区块链事件监控
-	monitor := contract.NewEventMonitor(contractManager, db)
-	if err := monitor.Start(); err != nil {
-		logger.Fatalf("Failed to start blockchain monitor: %v", err)
+	eventMonitor := monitor.NewEventMonitor(chainManager, db, 10) // 10个协程
+	if err := eventMonitor.Start(); err != nil {
+		logger.Fatalf("Failed to start blockchain event monitor: %v", err)
 	}
-	logger.Info("Blockchain monitor started successfully")
+	logger.Info("Blockchain event monitor started successfully")
+
+	// 打印监控状态
+	monitorStatus := eventMonitor.GetStatus()
+	logger.Info("Event monitor status: %+v", monitorStatus)
 
 	// 启动定时任务
-	task.Start(db, contractManager, cfg)
+	task.Start(db, chainManager, cfg)
 
 	// 启动服务器
 	logger.Info("Server starting on port %s", cfg.Server.Port)

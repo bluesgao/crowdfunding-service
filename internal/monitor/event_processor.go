@@ -1,4 +1,4 @@
-package processor
+package monitor
 
 import (
 	"math/big"
@@ -8,30 +8,30 @@ import (
 	"gorm.io/gorm"
 )
 
-// ProjectProcessor 项目事件处理器
-type ProjectProcessor struct {
+// EventProcessor 事件处理器
+type EventProcessor struct {
 	db *gorm.DB
 }
 
-// NewProjectProcessor 创建项目事件处理器
-func NewProjectProcessor(db *gorm.DB) *ProjectProcessor {
-	return &ProjectProcessor{
+// NewEventProcessor 创建事件处理器
+func NewEventProcessor(db *gorm.DB) *EventProcessor {
+	return &EventProcessor{
 		db: db,
 	}
 }
 
-// Process 处理所有事件类型
-func (p *ProjectProcessor) Process(event *model.EventModel, eventData map[string]interface{}) error {
+// ProcessEvent 处理事件
+func (ep *EventProcessor) ProcessEvent(event *model.EventModel, eventData map[string]interface{}) error {
 	// 根据事件类型处理不同的事件
 	switch event.EventName {
 	case "ProjectCreated":
-		return p.processProjectCreated(event, eventData)
+		return ep.processProjectCreated(event, eventData)
 	case "ProjectStatusChanged":
-		return p.processProjectStatusChanged(event, eventData)
+		return ep.processProjectStatusChanged(event, eventData)
 	case "ContributionMade":
-		return p.processContributionMade(event, eventData)
+		return ep.processContributionMade(event, eventData)
 	case "RefundProcessed":
-		return p.processRefundProcessed(event, eventData)
+		return ep.processRefundProcessed(event, eventData)
 	default:
 		logger.Warn("Unknown event name: %s", event.EventName)
 		return nil
@@ -39,7 +39,7 @@ func (p *ProjectProcessor) Process(event *model.EventModel, eventData map[string
 }
 
 // processProjectCreated 处理项目创建事件
-func (p *ProjectProcessor) processProjectCreated(event *model.EventModel, eventData map[string]interface{}) error {
+func (ep *EventProcessor) processProjectCreated(event *model.EventModel, eventData map[string]interface{}) error {
 	// 这里可以根据需要处理项目创建事件
 	// 例如：更新项目的合约地址等
 	projectId := eventData["projectId"].(int64)
@@ -49,7 +49,7 @@ func (p *ProjectProcessor) processProjectCreated(event *model.EventModel, eventD
 }
 
 // processProjectStatusChanged 处理项目状态变更事件
-func (p *ProjectProcessor) processProjectStatusChanged(event *model.EventModel, eventData map[string]interface{}) error {
+func (ep *EventProcessor) processProjectStatusChanged(event *model.EventModel, eventData map[string]interface{}) error {
 	// 获取项目状态
 	status := eventData["status"].(int64)
 	projectId := eventData["projectId"].(int64)
@@ -73,7 +73,7 @@ func (p *ProjectProcessor) processProjectStatusChanged(event *model.EventModel, 
 	}
 
 	// 直接通过数据库更新项目状态
-	if err := p.db.Model(&model.ProjectModel{}).Where("id = ?", projectId).Update("status", projectStatus).Error; err != nil {
+	if err := ep.db.Model(&model.ProjectModel{}).Where("id = ?", projectId).Update("status", projectStatus).Error; err != nil {
 		logger.Error("Failed to update project status: %v", err)
 		return err
 	}
@@ -83,7 +83,7 @@ func (p *ProjectProcessor) processProjectStatusChanged(event *model.EventModel, 
 }
 
 // processContributionMade 处理贡献事件
-func (p *ProjectProcessor) processContributionMade(event *model.EventModel, eventData map[string]interface{}) error {
+func (ep *EventProcessor) processContributionMade(event *model.EventModel, eventData map[string]interface{}) error {
 	// 创建贡献记录
 	contributor := eventData["contributor"].(string)
 	amount := eventData["amount"].(*big.Int)
@@ -98,7 +98,7 @@ func (p *ProjectProcessor) processContributionMade(event *model.EventModel, even
 	}
 
 	// 直接通过数据库创建贡献记录
-	if err := p.db.Create(&contribution).Error; err != nil {
+	if err := ep.db.Create(&contribution).Error; err != nil {
 		logger.Error("Failed to create contribution record: %v", err)
 		return err
 	}
@@ -110,7 +110,7 @@ func (p *ProjectProcessor) processContributionMade(event *model.EventModel, even
 }
 
 // processRefundProcessed 处理退款事件
-func (p *ProjectProcessor) processRefundProcessed(event *model.EventModel, eventData map[string]interface{}) error {
+func (ep *EventProcessor) processRefundProcessed(event *model.EventModel, eventData map[string]interface{}) error {
 	// 创建退款记录
 	refundee := eventData["refundee"].(string)
 	amount := eventData["amount"].(*big.Int)
@@ -128,7 +128,7 @@ func (p *ProjectProcessor) processRefundProcessed(event *model.EventModel, event
 	}
 
 	// 直接通过数据库创建退款记录
-	if err := p.db.Create(&refundRecord).Error; err != nil {
+	if err := ep.db.Create(&refundRecord).Error; err != nil {
 		logger.Error("Failed to create refund record: %v", err)
 		return err
 	}
@@ -137,9 +137,4 @@ func (p *ProjectProcessor) processRefundProcessed(event *model.EventModel, event
 		refundRecord.Amount, refundee, projectId)
 
 	return nil
-}
-
-// GetEventType 获取支持的事件名称
-func (p *ProjectProcessor) GetEventType() string {
-	return "ProjectCreated" // 主要处理项目创建事件，其他事件通过内部方法处理
 }

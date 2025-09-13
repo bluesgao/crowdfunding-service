@@ -8,7 +8,7 @@ import (
 type Config struct {
 	Server   ServerConfig   `mapstructure:"server"`
 	Database DatabaseConfig `mapstructure:"database"`
-	Ethereum EthereumConfig `mapstructure:"ethereum"`
+	Chain    ChainConfig    `mapstructure:"chain"`
 	Task     TaskConfig     `mapstructure:"task"`
 	Log      LogConfig      `mapstructure:"log"`
 }
@@ -27,19 +27,21 @@ type DatabaseConfig struct {
 	SSLMode  string `mapstructure:"sslmode"`
 }
 
-type EthereumConfig struct {
-	RpcUrl        string                    `mapstructure:"rpc_url"`
-	PrivateKey    string                    `mapstructure:"private_key"`
-	StartBlock    int64                     `mapstructure:"start_block"`
-	Confirmations int                       `mapstructure:"confirmations"`
-	Contracts     map[string]ContractConfig `mapstructure:"contracts"` // 多合约配置
+// ChainConfig 单链配置
+type ChainConfig struct {
+	ChainType  string                    `mapstructure:"chain_type"`  // 链类型 (ethereum, polygon, etc.)
+	ChainId    int64                     `mapstructure:"chain_id"`    // 链ID
+	RpcUrl     string                    `mapstructure:"rpc_url"`     // RPC节点URL
+	PrivateKey string                    `mapstructure:"private_key"` // 私钥
+	Contracts  map[string]ContractConfig `mapstructure:"contracts"`   // 该链上的合约配置
 }
 
-// ContractConfig 单个合约配置（简化版）
+// ContractConfig 单个合约配置
 type ContractConfig struct {
-	Address string `mapstructure:"address"`  // 合约地址
-	ABIPath string `mapstructure:"abi_path"` // ABI文件路径
-	Enabled bool   `mapstructure:"enabled"`  // 是否启用此合约
+	Address  string `mapstructure:"address"`   // 合约地址
+	ABIPath  string `mapstructure:"abi_path"`  // ABI文件路径
+	Enabled  bool   `mapstructure:"enabled"`   // 是否启用此合约
+	BlockNum int64  `mapstructure:"block_num"` // 合约部署区块号
 }
 
 type TaskConfig struct {
