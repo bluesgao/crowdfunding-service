@@ -98,23 +98,55 @@ func (c *Contract) ParseEvent(log types.Log) (map[string]interface{}, error) {
 	// 未知事件
 	logger.Warn("Unknown event signature: %s in contract %s", eventSignature, c.name)
 	return map[string]interface{}{
-		"eventName":   "Unknown",
-		"signature":   eventSignature,
-		"contract":    c.name,
-		"txHash":      log.TxHash.Hex(),
-		"blockNumber": log.BlockNumber,
-		"logIndex":    log.Index,
+		"eventName":       "Unknown",
+		"eventSignature":  eventSignature,
+		"contract":        c.name,
+		"contractAddress": c.address.Hex(),
+		"chainId":         c.chainId,
+		"txHash":          log.TxHash.Hex(),
+		"blockNumber":     log.BlockNumber,
+		"blockHash":       log.BlockHash.Hex(),
+		"logIndex":        log.Index,
+		"txIndex":         log.TxIndex,
+		"topics": func() []string {
+			topics := make([]string, len(log.Topics))
+			for i, topic := range log.Topics {
+				topics[i] = topic.Hex()
+			}
+			return topics
+		}(),
+		"data":    fmt.Sprintf("0x%x", log.Data),
+		"removed": log.Removed,
 	}, nil
 }
 
 // parseEvent 解析事件
 func (c *Contract) parseEvent(eventName string, log types.Log, event abi.Event) (map[string]interface{}, error) {
 	result := make(map[string]interface{})
+
+	// 基本信息
 	result["eventName"] = eventName
 	result["contract"] = c.name
+	result["contractAddress"] = c.address.Hex()
+	result["chainId"] = c.chainId
+
+	// 交易信息
 	result["txHash"] = log.TxHash.Hex()
 	result["blockNumber"] = log.BlockNumber
+	result["blockHash"] = log.BlockHash.Hex()
 	result["logIndex"] = log.Index
+	result["txIndex"] = log.TxIndex
+
+	// 原始日志数据
+	result["topics"] = make([]string, len(log.Topics))
+	for i, topic := range log.Topics {
+		result["topics"].([]string)[i] = topic.Hex()
+	}
+	result["data"] = fmt.Sprintf("0x%x", log.Data)
+	result["removed"] = log.Removed
+
+	// 事件签名
+	result["eventSignature"] = log.Topics[0].Hex()
 
 	// 解析索引参数
 	if len(log.Topics) > 1 {
