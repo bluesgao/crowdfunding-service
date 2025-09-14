@@ -52,7 +52,7 @@ func main() {
 	r := router.Setup(projectHandler, contributeHandler, refundHandler, cfg)
 
 	// 启动区块链事件监控
-	eventMonitor := monitor.NewEventMonitor(chainManager, db, 10) // 10个协程
+	eventMonitor := monitor.NewEventMonitor(chainManager, db) // 10个协程
 	if err := eventMonitor.Start(); err != nil {
 		logger.Fatalf("Failed to start blockchain event monitor: %v", err)
 	}

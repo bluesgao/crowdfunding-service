@@ -22,7 +22,13 @@ func NewEventProcessor(db *gorm.DB) *EventProcessor {
 
 // ProcessEvent 处理事件
 func (ep *EventProcessor) ProcessEvent(event *model.EventModel, eventData map[string]interface{}) error {
-	// 根据事件类型处理不同的事件
+	// 第一步：记录事件到数据库
+	if err := ep.db.Create(event).Error; err != nil {
+		logger.Error("Failed to save event to database: %v", err)
+		return err
+	}
+
+	// 第二步：根据事件类型处理不同的事件
 	switch event.EventName {
 	case "ProjectCreated":
 		return ep.processProjectCreated(event, eventData)

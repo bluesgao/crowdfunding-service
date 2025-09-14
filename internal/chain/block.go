@@ -18,12 +18,12 @@ func NewBlock() *Block {
 	return &Block{}
 }
 
-// GetBlockLogs 获取指定区块的日志
-func (b *Block) GetBlockLogs(client *ethclient.Client, contractAddress common.Address, blockNum int64) ([]types.Log, error) {
+// GetBatchBlockLogs 批量获取多个区块的日志
+func (b *Block) GetBatchBlockLogs(client *ethclient.Client, contractAddresses []common.Address, fromBlock, toBlock int64) ([]types.Log, error) {
 	query := ethereum.FilterQuery{
-		FromBlock: big.NewInt(blockNum),
-		ToBlock:   big.NewInt(blockNum),
-		Addresses: []common.Address{contractAddress},
+		FromBlock: big.NewInt(fromBlock),
+		ToBlock:   big.NewInt(toBlock),
+		Addresses: contractAddresses,
 	}
 
 	return client.FilterLogs(context.Background(), query)

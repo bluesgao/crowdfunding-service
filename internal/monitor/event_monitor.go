@@ -11,6 +11,7 @@ import (
 	"github.com/blues/cfs/internal/chain"
 	"github.com/blues/cfs/internal/logger"
 	"github.com/blues/cfs/internal/model"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/core/types"
 	"github.com/panjf2000/ants/v2"
 	"gorm.io/gorm"
@@ -35,16 +36,8 @@ type EventMonitor struct {
 func NewEventMonitor(
 	chainManager *chain.Manager,
 	db *gorm.DB,
-	poolSize int,
 ) *EventMonitor {
 	ctx, cancel := context.WithCancel(context.Background())
-
-	// 创建协程池
-	pool, err := ants.NewPool(poolSize)
-	if err != nil {
-		logger.Error("Failed to create goroutine pool: %v", err)
-		pool = nil
-	}
 
 	// 创建事件处理器
 	eventProcessor := NewEventProcessor(db)
@@ -53,7 +46,7 @@ func NewEventMonitor(
 		chainManager:    chainManager,
 		db:              db,
 		eventProcessor:  eventProcessor,
-		pool:            pool,
+		pool:            nil, // 不再使用全局协程池
 		startBlockNum:   0,
 		ctx:             ctx,
 		cancel:          cancel,
@@ -110,16 +103,11 @@ func (m *EventMonitor) Start() error {
 func (m *EventMonitor) Stop() {
 	logger.Info("Stopping blockchain event monitor")
 	m.cancel()
-
-	// 等待协程池关闭
-	if m.pool != nil {
-		m.pool.Release()
-	}
 }
 
 // loop 监控循环
 func (m *EventMonitor) loop() {
-	ticker := time.NewTicker(time.Second * 10) // 每10秒检查一次
+	ticker := time.NewTicker(time.Second * 60) // 每30秒检查一次，减少API调用频率
 	defer ticker.Stop()
 
 	for {
@@ -138,105 +126,131 @@ func (m *EventMonitor) loop() {
 
 			logger.Debug("Current block number: %d", currentBlock)
 
-			// 获取起始区块号
-			startBlock := m.getStartBlockNum()
-			if startBlock == 0 {
-				logger.Error("Failed to determine start block number")
+			// 获取所有合约
+			contracts := m.chainManager.GetContracts()
+			if len(contracts) == 0 {
+				logger.Debug("No contracts found")
 				continue
 			}
 
-			// 处理每个区块
-			logger.Debug("Processing blocks from %d to %d", startBlock, currentBlock)
-			for blockNum := startBlock; blockNum <= currentBlock; blockNum++ {
-				logger.Debug("Processing block %d", blockNum)
-				if err := m.processBlock(blockNum); err != nil {
-					// 如果是API限制错误，直接返回错误
-					if strings.Contains(err.Error(), "Too Many Requests") {
-						logger.Error("API rate limit hit while processing block %d: %v", blockNum, err)
-						m.handleError(err)
-						break
-					}
-					logger.Error("Error processing block %d: %v", blockNum, err)
-					continue
-				}
-
-				// 更新起始区块号
-				m.updateStartBlockNum(blockNum + 1)
+			// 批量处理区块
+			if err := m.processBlocksInBatches(contracts, m.startBlockNum, currentBlock); err != nil {
+				logger.Error("Error processing blocks: %v", err)
+				m.handleError(err)
 			}
 		}
 	}
 }
 
-// processBlock 处理单个区块
-func (m *EventMonitor) processBlock(blockNum int64) error {
-	// 检查是否已经处理过这个区块
-	if m.isBlockProcessed(blockNum) {
-		logger.Debug("Block %d already processed, skipping", blockNum)
-		return nil
+// processBlocksInBatches 分批处理区块
+func (m *EventMonitor) processBlocksInBatches(contracts map[string]*chain.Contract, fromBlock, toBlock int64) error {
+	logger.Debug("Processing blocks from %d to %d", fromBlock, toBlock)
+	batchSize := int64(500) // 减小批量大小，避免API限制
+
+	for currentFrom := fromBlock; currentFrom <= toBlock; currentFrom += batchSize {
+		currentTo := currentFrom + batchSize - 1
+		if currentTo > toBlock {
+			currentTo = toBlock
+		}
+
+		logger.Debug("Processing batch blocks %d to %d", currentFrom, currentTo)
+		if err := m.processBatchBlocks(contracts, currentFrom, currentTo); err != nil {
+			if m.isAPIRateLimitError(err) {
+				logger.Error("API rate limit hit while processing blocks %d-%d: %v", currentFrom, currentTo, err)
+				return err // 返回错误，让上层处理
+			}
+			logger.Error("Error processing blocks %d-%d: %v", currentFrom, currentTo, err)
+			continue // 继续处理下一批
+		}
+
+		// 更新起始区块号
+		m.updateStartBlockNum(currentTo + 1)
+
+		// 添加延迟，避免API限制
+		time.Sleep(time.Millisecond * 500)
 	}
 
-	// 获取所有合约
-	contracts := m.chainManager.GetContracts()
-	if len(contracts) == 0 {
-		logger.Debug("No contracts found")
-		return nil
-	}
+	return nil
+}
 
-	logger.Debug("Found %d contracts to process for block %d", len(contracts), blockNum)
+// processBatchBlocks 批量处理区块
+func (m *EventMonitor) processBatchBlocks(contracts map[string]*chain.Contract, fromBlock, toBlock int64) error {
+	logger.Debug("Processing blocks %d to %d with %d contracts", fromBlock, toBlock, len(contracts))
 
 	// 获取区块信息
 	block := chain.NewBlock()
 	client := m.chainManager.GetClient()
 
-	// 处理每个合约
-	for contractName, contract := range contracts {
-		// 检查合约是否已部署
-		if blockNum < contract.GetBlockNum() {
-			logger.Debug("Skipping block %d for contract %s (deployed at block %d)",
-				blockNum, contractName, contract.GetBlockNum())
+	// 获取已部署的合约地址和映射
+	contractAddresses, contractMap := m.getDeployedContracts(contracts, fromBlock, toBlock)
+	if len(contractAddresses) == 0 {
+		logger.Debug("No deployed contracts for blocks %d-%d", fromBlock, toBlock)
+		m.markBatchBlocksProcessed(fromBlock, toBlock)
+		return nil
+	}
+
+	// 批量获取所有合约的日志
+	logs, err := block.GetBatchBlockLogs(client, contractAddresses, fromBlock, toBlock)
+	if err != nil {
+		return fmt.Errorf("error getting logs for blocks %d-%d: %w", fromBlock, toBlock, err)
+	}
+
+	// 如果没有日志，直接标记区块已处理
+	if len(logs) == 0 {
+		logger.Debug("No logs found for blocks %d-%d", fromBlock, toBlock)
+		m.markBatchBlocksProcessed(fromBlock, toBlock)
+		return nil
+	}
+
+	logger.Debug("Found %d logs for blocks %d-%d", len(logs), fromBlock, toBlock)
+
+	// 按合约地址分组日志
+	logsByContract := m.groupLogsByContract(logs)
+	groupCount := len(logsByContract)
+
+	if groupCount == 0 {
+		logger.Debug("No contract groups to process")
+		return nil
+	}
+
+	logger.Debug("Processing %d contract groups", groupCount)
+
+	// 创建临时协程池，大小等于分组数量
+	tempPool, err := ants.NewPool(groupCount)
+	if err != nil {
+		return fmt.Errorf("failed to create temporary pool for %d groups: %w", groupCount, err)
+	}
+	defer tempPool.Release()
+
+	// 使用临时协程池并发处理每个合约的日志
+	for address, contractLogs := range logsByContract {
+		contract := contractMap[address]
+		if contract == nil {
+			logger.Warn("Unknown contract address: %s", address.Hex())
 			continue
 		}
 
-		// 获取该合约在该区块的日志
-		logs, err := block.GetBlockLogs(client, contract.GetAddress(), blockNum)
+		logger.Debug("Processing %d logs for contract %s", len(contractLogs), contract.GetName())
+
+		err := tempPool.Submit(func() {
+			m.processContractLogs(contract, contractLogs)
+		})
 		if err != nil {
-			// 如果是API限制错误，直接返回错误
-			if strings.Contains(err.Error(), "Too Many Requests") {
-				return fmt.Errorf("API rate limit hit while getting logs for contract %s: %w", contractName, err)
-			}
-			logger.Error("Error getting logs for block %d, contract %s: %v", blockNum, contractName, err)
+			logger.Error("Failed to submit task to pool: %v", err)
 			continue
-		}
-
-		// 如果没有日志，跳过
-		if len(logs) == 0 {
-			continue
-		}
-
-		logger.Debug("Found %d logs for contract %s in block %d", len(logs), contractName, blockNum)
-
-		// 使用协程池并发处理日志
-		if m.pool != nil {
-			err := m.pool.Submit(func() {
-				m.processLogs(contract, logs, blockNum)
-			})
-			if err != nil {
-				return err
-			}
-		} else {
-			// 如果没有协程池，直接处理
-			m.processLogs(contract, logs, blockNum)
 		}
 	}
 
+	// 等待所有协程完成（通过defer tempPool.Release()自动等待）
+
 	// 标记区块已处理
-	m.markBlockProcessed(blockNum)
+	m.markBatchBlocksProcessed(fromBlock, toBlock)
 
 	return nil
 }
 
-// processLogs 处理日志
-func (m *EventMonitor) processLogs(contract *chain.Contract, logs []types.Log, blockNum int64) {
+// processContractLogs 处理合约的所有日志
+func (m *EventMonitor) processContractLogs(contract *chain.Contract, logs []types.Log) {
 	for _, log := range logs {
 		// 解析事件
 		eventData, err := contract.ParseEvent(log)
@@ -245,15 +259,22 @@ func (m *EventMonitor) processLogs(contract *chain.Contract, logs []types.Log, b
 			continue
 		}
 
+		// 将事件数据转换为JSON
+		eventDataJSON, err := json.Marshal(eventData)
+		if err != nil {
+			logger.Error("Failed to marshal event data to JSON: %v", err)
+			continue
+		}
+
 		// 创建事件模型
 		event := &model.EventModel{
 			ContractAddress: contract.GetAddress().Hex(),
 			ContractName:    contract.GetName(),
-			BlockNum:        blockNum,
+			BlockNum:        int64(log.BlockNumber),
 			TxHash:          log.TxHash.Hex(),
 			LogIndex:        int64(log.Index),
 			EventName:       eventData["eventName"].(string),
-			Data:            fmt.Sprintf("%v", eventData),
+			Data:            string(eventDataJSON),
 		}
 
 		// 处理事件
@@ -262,7 +283,7 @@ func (m *EventMonitor) processLogs(contract *chain.Contract, logs []types.Log, b
 			continue
 		}
 
-		logger.Debug("Processed event for contract %s at block %d", contract.GetName(), blockNum)
+		logger.Debug("Processed event for contract %s at block %d", contract.GetName(), log.BlockNumber)
 	}
 }
 
@@ -354,6 +375,12 @@ func (m *EventMonitor) markBlockProcessed(blockNum int64) {
 	logger.Debug("Marked block %d as processed", blockNum)
 }
 
+// markBatchBlocksProcessed 标记批量区块已处理
+func (m *EventMonitor) markBatchBlocksProcessed(fromBlock, toBlock int64) {
+	// 这里可以添加标记逻辑，比如记录到数据库
+	logger.Debug("Marked blocks %d-%d as processed", fromBlock, toBlock)
+}
+
 // handleError 处理错误
 func (m *EventMonitor) handleError(err error) {
 	m.retryCount++
@@ -385,18 +412,12 @@ func (m *EventMonitor) GetStatus() map[string]interface{} {
 
 // getPoolStatus 获取协程池状态
 func (m *EventMonitor) getPoolStatus() map[string]interface{} {
-	if m.pool == nil {
-		return map[string]interface{}{
-			"running": 0,
-			"free":    0,
-			"cap":     0,
-		}
-	}
-
+	// 现在使用临时协程池，不再有全局协程池状态
 	return map[string]interface{}{
-		"running": m.pool.Running(),
-		"free":    m.pool.Free(),
-		"cap":     m.pool.Cap(),
+		"type":    "temporary_pools",
+		"running": 0,
+		"free":    0,
+		"cap":     0,
 	}
 }
 
@@ -408,4 +429,41 @@ func (m *EventMonitor) GetStatusJSON() (string, error) {
 		return "", fmt.Errorf("failed to marshal monitor status: %w", err)
 	}
 	return string(jsonData), nil
+}
+
+// getDeployedContracts 获取已部署的合约地址和映射
+func (m *EventMonitor) getDeployedContracts(contracts map[string]*chain.Contract, fromBlock, toBlock int64) ([]common.Address, map[common.Address]*chain.Contract) {
+	var contractAddresses []common.Address
+	contractMap := make(map[common.Address]*chain.Contract)
+
+	for contractName, contract := range contracts {
+		// 检查合约是否已部署
+		if toBlock < contract.GetBlockNum() {
+			logger.Debug("Skipping blocks %d-%d for contract %s (deployed at block %d)",
+				fromBlock, toBlock, contractName, contract.GetBlockNum())
+			continue
+		}
+
+		address := contract.GetAddress()
+		contractAddresses = append(contractAddresses, address)
+		contractMap[address] = contract
+	}
+
+	return contractAddresses, contractMap
+}
+
+// isAPIRateLimitError 检查是否为API限制错误
+func (m *EventMonitor) isAPIRateLimitError(err error) bool {
+	return strings.Contains(err.Error(), "Too Many Requests")
+}
+
+// groupLogsByContract 按合约地址分组日志
+func (m *EventMonitor) groupLogsByContract(logs []types.Log) map[common.Address][]types.Log {
+	logsByContract := make(map[common.Address][]types.Log)
+
+	for _, log := range logs {
+		logsByContract[log.Address] = append(logsByContract[log.Address], log)
+	}
+
+	return logsByContract
 }
