@@ -23,177 +23,74 @@ func NewProjectHandler(projectLogic *logic.ProjectLogic) *ProjectHandler {
 func (h *ProjectHandler) CreateProject(c *gin.Context) {
 	var project model.ProjectModel
 	if err := c.ShouldBindJSON(&project); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		ErrorResponse(c, http.StatusBadRequest, err.Error())
 		return
 	}
 
 	// 调用logic层创建项目
 	if err := h.projectLogic.CreateProject(&project); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		ErrorResponse(c, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	c.JSON(http.StatusCreated, gin.H{
-		"message": "项目创建成功",
-		"project": project,
-	})
+	SuccessResponse(c, http.StatusCreated, "项目创建成功", CreateProjectResponse{Project: ToProjectResponse(&project)})
 }
 
 // GetProjects 获取项目列表
 func (h *ProjectHandler) GetProjects(c *gin.Context) {
-	// 获取查询参数
-	status := c.Query("status")
-	category := c.Query("category")
-	creator := c.Query("creator")
-	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "10"))
-
-	// 调用logic层获取项目列表
-	projects, total, err := h.projectLogic.GetProjects(status, category, creator, page, pageSize)
+	// 调用logic层获取所有项目
+	projects, err := h.projectLogic.GetProjects()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		ErrorResponse(c, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"projects":  projects,
-		"total":     total,
-		"page":      page,
-		"page_size": pageSize,
-	})
+	SuccessResponse(c, http.StatusOK, "获取项目列表成功", GetProjectsResponse{Projects: ToProjectResponseList(projects)})
 }
 
 // GetProject 获取单个项目详情
 func (h *ProjectHandler) GetProject(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的项目ID"})
+		ErrorResponse(c, http.StatusBadRequest, "无效的项目ID")
 		return
 	}
 
 	// 调用logic层获取项目详情
 	project, err := h.projectLogic.GetProject(int64(id))
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		ErrorResponse(c, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"project": project})
-}
-
-// UpdateProject 更新项目
-func (h *ProjectHandler) UpdateProject(c *gin.Context) {
-	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的项目ID"})
-		return
-	}
-
-	// 只允许更新特定字段
-	var updateData struct {
-		Title       *string `json:"title"`
-		Description *string `json:"description"`
-		ImageURL    *string `json:"image_url"`
-		Category    *string `json:"category"`
-	}
-
-	if err := c.ShouldBindJSON(&updateData); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	// 更新字段
-	updates := make(map[string]interface{})
-	if updateData.Title != nil {
-		updates["title"] = *updateData.Title
-	}
-	if updateData.Description != nil {
-		updates["description"] = *updateData.Description
-	}
-	if updateData.ImageURL != nil {
-		updates["image_url"] = *updateData.ImageURL
-	}
-	if updateData.Category != nil {
-		updates["category"] = *updateData.Category
-	}
-
-	if len(updates) == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "没有要更新的字段"})
-		return
-	}
-
-	// 调用logic层更新项目
-	err = h.projectLogic.UpdateProject(int64(id), updates)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"message": "项目更新成功",
-	})
-}
-
-// CancelProject 取消项目
-func (h *ProjectHandler) CancelProject(c *gin.Context) {
-	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的项目ID"})
-		return
-	}
-
-	// 调用logic层取消项目
-	if err := h.projectLogic.CancelProject(int64(id)); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"message": "项目已取消"})
-}
-
-// GetProjectContributions 获取项目贡献记录
-func (h *ProjectHandler) GetProjectContributions(c *gin.Context) {
-	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的项目ID"})
-		return
-	}
-
-	// 分页参数
-	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "20"))
-
-	// 调用logic层获取项目贡献记录
-	contributions, total, err := h.projectLogic.GetProjectContributions(int64(id), page, pageSize)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"contributions": contributions,
-		"total":         total,
-		"page":          page,
-		"page_size":     pageSize,
-	})
+	SuccessResponse(c, http.StatusOK, "获取项目详情成功", GetProjectResponse{Project: ToProjectResponse(project)})
 }
 
 // GetProjectStats 获取项目统计信息
 func (h *ProjectHandler) GetProjectStats(c *gin.Context) {
 	id, err := strconv.ParseUint(c.Param("id"), 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的项目ID"})
+		ErrorResponse(c, http.StatusBadRequest, "无效的项目ID")
 		return
 	}
 
 	// 调用logic层获取项目统计信息
 	stats, err := h.projectLogic.GetProjectStats(int64(id))
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		ErrorResponse(c, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"data": stats,
-	})
+	SuccessResponse(c, http.StatusOK, "获取项目统计信息成功", GetProjectStatsResponse{Stats: stats})
+}
+
+// GetAllProjectStats 获取所有项目的统计信息
+func (h *ProjectHandler) GetAllProjectStats(c *gin.Context) {
+	stats, err := h.projectLogic.GetAllProjectStats()
+	if err != nil {
+		ErrorResponse(c, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	SuccessResponse(c, http.StatusOK, "获取所有项目统计信息成功", GetAllProjectStatsResponse{Stats: ToAllProjectStatsResponse(stats)})
 }

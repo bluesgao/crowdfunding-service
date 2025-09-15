@@ -25,7 +25,7 @@ func (h *ContributeHandler) GetProjectContributeRecords(c *gin.Context) {
 	projectIdStr := c.Param("id")
 	projectId, err := strconv.ParseUint(projectIdStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的项目ID"})
+		ErrorResponse(c, http.StatusBadRequest, "无效的项目ID")
 		return
 	}
 
@@ -35,87 +35,38 @@ func (h *ContributeHandler) GetProjectContributeRecords(c *gin.Context) {
 	// 调用logic层获取项目贡献记录
 	records, total, err := h.contributeLogic.GetProjectContributeRecords(int64(projectId), page, pageSize)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		ErrorResponse(c, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"data": records,
-		"pagination": gin.H{
-			"page":       page,
-			"page_size":  pageSize,
-			"total":      total,
-			"total_page": (total + int64(pageSize) - 1) / int64(pageSize),
-		},
+	pagination := Pagination{
+		Page:      page,
+		PageSize:  pageSize,
+		Total:     total,
+		TotalPage: (total + int64(pageSize) - 1) / int64(pageSize),
+	}
+
+	SuccessResponse(c, http.StatusOK, "获取项目贡献记录成功", GetProjectContributeRecordsResponse{
+		Records:    ToContributeRecordResponseList(records),
+		Pagination: pagination,
 	})
 }
 
-// GetUserContributeRecords 获取用户贡献记录
-func (h *ContributeHandler) GetUserContributeRecords(c *gin.Context) {
-	address := c.Param("address")
-	if address == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "用户地址不能为空"})
-		return
-	}
-
-	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
-	pageSize, _ := strconv.Atoi(c.DefaultQuery("page_size", "10"))
-
-	// 调用logic层获取用户贡献记录
-	records, total, err := h.contributeLogic.GetUserContributeRecords(address, page, pageSize)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"data": records,
-		"pagination": gin.H{
-			"page":       page,
-			"page_size":  pageSize,
-			"total":      total,
-			"total_page": (total + int64(pageSize) - 1) / int64(pageSize),
-		},
-	})
-}
-
-// GetContributeRecordByTxHash 根据交易哈希获取贡献记录
-func (h *ContributeHandler) GetContributeRecordByTxHash(c *gin.Context) {
-	txHash := c.Param("tx_hash")
-	if txHash == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "交易哈希不能为空"})
-		return
-	}
-
-	// 调用logic层获取贡献记录
-	record, err := h.contributeLogic.GetContributeRecordByTxHash(txHash)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{
-		"data": record,
-	})
-}
-
-// GetContributeStatistics 获取贡献统计信息
-func (h *ContributeHandler) GetContributeStatistics(c *gin.Context) {
+// GetContributeStats 获取贡献统计信息
+func (h *ContributeHandler) GetContributeStats(c *gin.Context) {
 	projectIdStr := c.Param("id")
 	projectId, err := strconv.ParseUint(projectIdStr, 10, 32)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "无效的项目ID"})
+		ErrorResponse(c, http.StatusBadRequest, "无效的项目ID")
 		return
 	}
 
 	// 调用logic层获取统计信息
-	stats, err := h.contributeLogic.GetContributeStatistics(int64(projectId))
+	stats, err := h.contributeLogic.GetContributeStats(int64(projectId))
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		ErrorResponse(c, http.StatusInternalServerError, err.Error())
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"data": stats,
-	})
+	SuccessResponse(c, http.StatusOK, "获取贡献统计信息成功", GetContributeStatsResponse{Stats: stats})
 }

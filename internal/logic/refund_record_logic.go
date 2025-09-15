@@ -87,53 +87,8 @@ func (r *RefundRecordLogic) GetProjectRefunds(projectId int64, page, pageSize in
 	return refunds, total, nil
 }
 
-// GetUserRefunds 获取用户退款记录
-func (r *RefundRecordLogic) GetUserRefunds(address string, page, pageSize int) ([]model.RefundRecordModel, int64, error) {
-	var refunds []model.RefundRecordModel
-	var total int64
-
-	// 获取总数
-	if err := r.db.Model(&model.RefundRecordModel{}).Where("address = ?", address).Count(&total).Error; err != nil {
-		return nil, 0, fmt.Errorf("获取用户退款记录总数失败: %w", err)
-	}
-
-	// 分页查询
-	offset := (page - 1) * pageSize
-	if err := r.db.Where("address = ?", address).
-		Order("created_at DESC").
-		Offset(offset).
-		Limit(pageSize).
-		Find(&refunds).Error; err != nil {
-		return nil, 0, fmt.Errorf("获取用户退款记录失败: %w", err)
-	}
-
-	return refunds, total, nil
-}
-
-// GetRefundByTxHash 根据交易哈希获取退款记录
-func (r *RefundRecordLogic) GetRefundByTxHash(txHash string) (*model.RefundRecordModel, error) {
-	var refund model.RefundRecordModel
-	if err := r.db.Where("tx_hash = ?", txHash).First(&refund).Error; err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, errors.New("退款记录不存在")
-		}
-		return nil, fmt.Errorf("获取退款记录失败: %w", err)
-	}
-
-	return &refund, nil
-}
-
-// UpdateRefundStatus 更新退款状态
-func (r *RefundRecordLogic) UpdateRefundStatus(id int64, status model.RefundStatus) error {
-	if err := r.db.Model(&model.RefundRecordModel{}).Where("id = ?", id).Update("status", status).Error; err != nil {
-		return fmt.Errorf("更新退款状态失败: %w", err)
-	}
-
-	return nil
-}
-
-// GetRefundStatistics 获取退款统计信息
-func (r *RefundRecordLogic) GetRefundStatistics(projectId int64) (map[string]interface{}, error) {
+// GetRefundStats 获取退款统计信息
+func (r *RefundRecordLogic) GetRefundStats(projectId int64) (map[string]interface{}, error) {
 	var stats struct {
 		TotalRefunds     int64   `json:"total_refunds"`
 		TotalAmount      float64 `json:"total_amount"`

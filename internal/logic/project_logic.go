@@ -38,90 +38,16 @@ func (p *ProjectLogic) CreateProject(project *model.ProjectModel) error {
 	return nil
 }
 
-// UpdateProject 更新项目
-func (p *ProjectLogic) UpdateProject(id int64, updates map[string]interface{}) error {
-	// 检查项目是否存在
-	var project model.ProjectModel
-	if err := p.db.First(&project, id).Error; err != nil {
-		if err == gorm.ErrRecordNotFound {
-			return errors.New("项目不存在")
-		}
-		return err
-	}
-
-	// 只允许更新特定字段
-	allowedFields := []string{"title", "description", "image_url", "category"}
-	for key := range updates {
-		if !contains(allowedFields, key) {
-			delete(updates, key)
-		}
-	}
-
-	if len(updates) == 0 {
-		return errors.New("没有要更新的字段")
-	}
-
-	// 更新项目
-	if err := p.db.Model(&project).Updates(updates).Error; err != nil {
-		return err
-	}
-
-	return nil
-}
-
-// CancelProject 取消项目
-func (p *ProjectLogic) CancelProject(id int64) error {
-	var project model.ProjectModel
-	if err := p.db.First(&project, id).Error; err != nil {
-		if err == gorm.ErrRecordNotFound {
-			return errors.New("项目不存在")
-		}
-		return err
-	}
-
-	// 检查项目状态
-	if project.Status != model.ProjectStatusPending && project.Status != model.ProjectStatusActive {
-		return errors.New("只有待开始或进行中的项目才能取消")
-	}
-
-	// 更新状态
-	if err := p.db.Model(&project).Update("status", model.ProjectStatusCancelled).Error; err != nil {
-		return err
-	}
-
-	return nil
-}
-
 // GetProjects 获取项目列表
-func (p *ProjectLogic) GetProjects(status string, category string, creator string, page, pageSize int) ([]model.ProjectModel, int64, error) {
+func (p *ProjectLogic) GetProjects() ([]model.ProjectModel, error) {
 	var projects []model.ProjectModel
-	var total int64
 
-	query := p.db.Model(&model.ProjectModel{})
-
-	// 添加过滤条件
-	if status != "" {
-		query = query.Where("status = ?", status)
-	}
-	if category != "" {
-		query = query.Where("category = ?", category)
-	}
-	if creator != "" {
-		query = query.Where("creator = ?", creator)
+	// 获取所有项目
+	if err := p.db.Find(&projects).Error; err != nil {
+		return nil, fmt.Errorf("获取项目列表失败: %w", err)
 	}
 
-	// 获取总数
-	if err := query.Count(&total).Error; err != nil {
-		return nil, 0, fmt.Errorf("获取项目总数失败: %w", err)
-	}
-
-	// 分页查询
-	offset := (page - 1) * pageSize
-	if err := query.Offset(offset).Limit(pageSize).Find(&projects).Error; err != nil {
-		return nil, 0, fmt.Errorf("获取项目列表失败: %w", err)
-	}
-
-	return projects, total, nil
+	return projects, nil
 }
 
 // GetProject 获取项目详情
@@ -137,47 +63,6 @@ func (p *ProjectLogic) GetProject(id int64) (*model.ProjectModel, error) {
 	}
 
 	return &project, nil
-}
-
-// UpdateProjectStatus 更新项目状态
-func (p *ProjectLogic) UpdateProjectStatus(id int64, status model.ProjectStatus) error {
-	var project model.ProjectModel
-	if err := p.db.First(&project, id).Error; err != nil {
-		if err == gorm.ErrRecordNotFound {
-			return errors.New("项目不存在")
-		}
-		return fmt.Errorf("获取项目失败: %w", err)
-	}
-
-	// 更新项目状态
-	if err := p.db.Model(&project).Update("status", status).Error; err != nil {
-		return fmt.Errorf("更新项目状态失败: %w", err)
-	}
-
-	return nil
-}
-
-// GetProjectContributions 获取项目贡献记录
-func (p *ProjectLogic) GetProjectContributions(projectId int64, page, pageSize int) ([]model.ContributeRecordModel, int64, error) {
-	var contributions []model.ContributeRecordModel
-	var total int64
-
-	// 获取总数
-	if err := p.db.Model(&model.ContributeRecordModel{}).Where("project_id = ?", projectId).Count(&total).Error; err != nil {
-		return nil, 0, fmt.Errorf("获取贡献记录总数失败: %w", err)
-	}
-
-	// 分页查询
-	offset := (page - 1) * pageSize
-	if err := p.db.Where("project_id = ?", projectId).
-		Order("created_at DESC").
-		Offset(offset).
-		Limit(pageSize).
-		Find(&contributions).Error; err != nil {
-		return nil, 0, fmt.Errorf("获取贡献记录失败: %w", err)
-	}
-
-	return contributions, total, nil
 }
 
 // GetProjectStats 获取项目统计信息
@@ -212,7 +97,7 @@ func (p *ProjectLogic) GetProjectStats(id int64) (map[string]interface{}, error)
 	// 计算剩余时间
 	remainingTime := time.Duration(0)
 	if project.Status == model.ProjectStatusActive && time.Now().Before(project.EndTime) {
-		remainingTime = project.EndTime.Sub(time.Now())
+		remainingTime = time.Until(project.EndTime)
 	}
 
 	return map[string]interface{}{
@@ -224,6 +109,93 @@ func (p *ProjectLogic) GetProjectStats(id int64) (map[string]interface{}, error)
 		"contribution_count":    contributionCount,
 		"remaining_time":        remainingTime.String(),
 		"status":                project.Status,
+	}, nil
+}
+
+// GetAllProjectStats 获取所有项目的统计信息
+func (p *ProjectLogic) GetAllProjectStats() (map[string]interface{}, error) {
+	// 统计项目总数
+	var totalProjects int64
+	p.db.Model(&model.ProjectModel{}).Count(&totalProjects)
+
+	// 按状态统计项目数量
+	var statusStats []struct {
+		Status string `json:"status"`
+		Count  int64  `json:"count"`
+	}
+	p.db.Model(&model.ProjectModel{}).
+		Select("status, count(*) as count").
+		Group("status").
+		Scan(&statusStats)
+
+	// 统计总目标金额和当前金额
+	var totalStats struct {
+		TotalTargetAmount  int64 `json:"total_target_amount"`
+		TotalCurrentAmount int64 `json:"total_current_amount"`
+	}
+	p.db.Model(&model.ProjectModel{}).
+		Select("SUM(target_amount) as total_target_amount, SUM(current_amount) as total_current_amount").
+		Scan(&totalStats)
+
+	// 统计总贡献者数量（去重）
+	var totalContributors int64
+	p.db.Model(&model.ContributeRecordModel{}).
+		Distinct("address").
+		Count(&totalContributors)
+
+	// 统计总贡献记录数量
+	var totalContributions int64
+	p.db.Model(&model.ContributeRecordModel{}).Count(&totalContributions)
+
+	// 统计活跃项目数量（进行中的项目）
+	var activeProjects int64
+	p.db.Model(&model.ProjectModel{}).
+		Where("status = ?", model.ProjectStatusActive).
+		Count(&activeProjects)
+
+	// 统计成功项目数量
+	var successProjects int64
+	p.db.Model(&model.ProjectModel{}).
+		Where("status = ?", model.ProjectStatusSuccess).
+		Count(&successProjects)
+
+	// 统计失败项目数量
+	var failedProjects int64
+	p.db.Model(&model.ProjectModel{}).
+		Where("status = ?", model.ProjectStatusFailed).
+		Count(&failedProjects)
+
+	// 统计最近7天创建的项目数量
+	var recentProjects int64
+	sevenDaysAgo := time.Now().AddDate(0, 0, -7)
+	p.db.Model(&model.ProjectModel{}).
+		Where("created_at >= ?", sevenDaysAgo).
+		Count(&recentProjects)
+
+	// 计算成功项目数量（包括成功和失败的项目）
+	completedProjects := successProjects + failedProjects
+
+	// 计算成功率
+	successRate := float64(0)
+	if completedProjects > 0 {
+		successRate = float64(successProjects) / float64(completedProjects) * 100
+	}
+
+	// 计算平均投资金额
+	avgInvestment := float64(0)
+	if totalContributions > 0 {
+		avgInvestment = float64(totalStats.TotalCurrentAmount) / float64(totalContributions)
+	}
+
+	return map[string]interface{}{
+		"totalProjects":     totalProjects,
+		"activeProjects":    activeProjects,
+		"completedProjects": completedProjects,
+		"totalRaised":       fmt.Sprintf("%d", totalStats.TotalCurrentAmount),
+		"totalInvestors":    totalContributors,
+		"totalGoal":         fmt.Sprintf("%d", totalStats.TotalTargetAmount),
+		"successRate":       fmt.Sprintf("%.2f", successRate),
+		"averageInvestment": fmt.Sprintf("%.0f", avgInvestment),
 	}, nil
 }
 

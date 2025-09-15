@@ -107,30 +107,6 @@ func (c *ContributeRecordLogic) GetProjectContributeRecords(projectId int64, pag
 	return contributions, total, nil
 }
 
-// GetUserContributeRecords 获取用户贡献记录
-func (c *ContributeRecordLogic) GetUserContributeRecords(address string, page, pageSize int) ([]model.ContributeRecordModel, int64, error) {
-	var contributions []model.ContributeRecordModel
-	var total int64
-
-	// 获取总数
-	if err := c.db.Model(&model.ContributeRecordModel{}).Where("address = ?", address).Count(&total).Error; err != nil {
-		return nil, 0, err
-	}
-
-	// 获取数据
-	offset := (page - 1) * pageSize
-	if err := c.db.Where("address = ?", address).
-		Preload("Project").
-		Offset(offset).
-		Limit(pageSize).
-		Order("created_at DESC").
-		Find(&contributions).Error; err != nil {
-		return nil, 0, err
-	}
-
-	return contributions, total, nil
-}
-
 // validateContributeRecord 验证贡献数据
 func (c *ContributeRecordLogic) validateContributeRecord(contributeRecord *model.ContributeRecordModel) error {
 	if contributeRecord.ProjectId == 0 {
@@ -148,21 +124,8 @@ func (c *ContributeRecordLogic) validateContributeRecord(contributeRecord *model
 	return nil
 }
 
-// GetContributeRecordByTxHash 根据交易哈希获取贡献记录
-func (c *ContributeRecordLogic) GetContributeRecordByTxHash(txHash string) (*model.ContributeRecordModel, error) {
-	var record model.ContributeRecordModel
-	if err := c.db.Where("tx_hash = ?", txHash).First(&record).Error; err != nil {
-		if err == gorm.ErrRecordNotFound {
-			return nil, errors.New("贡献记录不存在")
-		}
-		return nil, fmt.Errorf("获取贡献记录失败: %w", err)
-	}
-
-	return &record, nil
-}
-
-// GetContributeStatistics 获取贡献统计信息
-func (c *ContributeRecordLogic) GetContributeStatistics(projectId int64) (map[string]interface{}, error) {
+// GetContributeStats 获取贡献统计信息
+func (c *ContributeRecordLogic) GetContributeStats(projectId int64) (map[string]interface{}, error) {
 	var stats struct {
 		TotalContributions int64   `json:"total_contributions"`
 		TotalAmount        float64 `json:"total_amount"`

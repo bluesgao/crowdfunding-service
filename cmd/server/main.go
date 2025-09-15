@@ -41,7 +41,6 @@ func main() {
 	projectLogic := logic.NewProjectLogic(db)
 	contributeRecordLogic := logic.NewContributeRecordLogic(db)
 	refundRecordLogic := logic.NewRefundRecordLogic(db)
-	// milestoneLogic := logic.NewMilestoneLogic(db) // 暂未使用
 
 	// 依赖装配 - Handler层
 	projectHandler := handler.NewProjectHandler(projectLogic)

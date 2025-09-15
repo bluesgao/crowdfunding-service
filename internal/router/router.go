@@ -39,10 +39,8 @@ func Setup(
 			projects.POST("", projectHandler.CreateProject)
 			projects.GET("", projectHandler.GetProjects)
 			projects.GET("/:id", projectHandler.GetProject)
-			projects.PUT("/:id", projectHandler.UpdateProject)
-			projects.DELETE("/:id", projectHandler.CancelProject)
-			projects.GET("/:id/contributions", projectHandler.GetProjectContributions)
 			projects.GET("/:id/stats", projectHandler.GetProjectStats)
+			projects.GET("/stats", projectHandler.GetAllProjectStats)
 		}
 
 		// 记录相关路由组
@@ -52,22 +50,16 @@ func Setup(
 			contribute := recordGroup.Group("/contribute")
 			{
 				contribute.GET("/project/:id", contributeHandler.GetProjectContributeRecords)
-				contribute.GET("/user/:address", contributeHandler.GetUserContributeRecords)
-				contribute.GET("/tx/:hash", contributeHandler.GetContributeRecordByTxHash)
-				contribute.GET("/statistics", contributeHandler.GetContributeStatistics)
+				contribute.GET("/stats", contributeHandler.GetContributeStats)
 			}
 
 			// 退款记录路由
 			refund := recordGroup.Group("/refund")
 			{
 				refund.GET("/project/:id", refundHandler.GetProjectRefunds)
-				refund.GET("/user/:address", refundHandler.GetUserRefunds)
-				refund.GET("/tx/:hash", refundHandler.GetRefundByTxHash)
-				refund.PUT("/:id/status", refundHandler.UpdateRefundStatus)
-				refund.GET("/statistics", refundHandler.GetRefundStatistics)
+				refund.GET("/stats", refundHandler.GetRefundStats)
 			}
 		}
-
 	}
 
 	return r
