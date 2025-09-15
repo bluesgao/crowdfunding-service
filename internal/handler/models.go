@@ -23,23 +23,51 @@ type Pagination struct {
 
 // 项目相关响应模型
 
+// ProjectTeamResponse 项目团队响应模型
+type ProjectTeamResponse struct {
+	ID         uint   `json:"id"`
+	ProjectID  uint   `json:"projectId"`
+	MemberName string `json:"memberName"`
+	MemberRole string `json:"memberRole"`
+	Address    string `json:"address"`
+	Email      string `json:"email"`
+	Bio        string `json:"bio"`
+	AvatarURL  string `json:"avatarUrl"`
+	IsActive   bool   `json:"isActive"`
+}
+
+// ProjectMilestoneResponse 项目里程碑响应模型
+type ProjectMilestoneResponse struct {
+	ID            uint       `json:"id"`
+	ProjectID     uint       `json:"projectId"`
+	Title         string     `json:"title"`
+	Description   string     `json:"description"`
+	TargetDate    time.Time  `json:"targetDate"`
+	CompletedDate *time.Time `json:"completedDate"`
+	Status        string     `json:"status"`
+	Progress      int        `json:"progress"`
+	Priority      string     `json:"priority"`
+}
+
 // ProjectResponse 项目响应模型
 type ProjectResponse struct {
-	ID            uint      `json:"id"`
-	Title         string    `json:"title"`
-	Description   string    `json:"description"`
-	ImageURL      string    `json:"imageUrl"`
-	Category      string    `json:"category"`
-	Creator       string    `json:"creator"`
-	TargetAmount  int64     `json:"targetAmount"`
-	CurrentAmount int64     `json:"currentAmount"`
-	MinAmount     int64     `json:"minAmount"`
-	MaxAmount     int64     `json:"maxAmount"`
-	Status        string    `json:"status"`
-	StartTime     time.Time `json:"startTime"`
-	EndTime       time.Time `json:"endTime"`
-	CreatedAt     time.Time `json:"createdAt"`
-	UpdatedAt     time.Time `json:"updatedAt"`
+	ID               uint                       `json:"id"`
+	Title            string                     `json:"title"`
+	Description      string                     `json:"description"`
+	ImageURL         string                     `json:"imageUrl"`
+	Category         string                     `json:"category"`
+	Creator          string                     `json:"creator"`
+	TargetAmount     int64                      `json:"targetAmount"`
+	CurrentAmount    int64                      `json:"currentAmount"`
+	MinAmount        int64                      `json:"minAmount"`
+	MaxAmount        int64                      `json:"maxAmount"`
+	Status           string                     `json:"status"`
+	StartTime        time.Time                  `json:"startTime"`
+	EndTime          time.Time                  `json:"endTime"`
+	CreatedAt        time.Time                  `json:"createdAt"`
+	UpdatedAt        time.Time                  `json:"updatedAt"`
+	ProjectTeam      []ProjectTeamResponse      `json:"projectTeam"`
+	ProjectMilestone []ProjectMilestoneResponse `json:"projectMilestone"`
 }
 
 // CreateProjectResponse 创建项目响应
@@ -65,13 +93,14 @@ type GetProjectStatsResponse struct {
 // AllProjectStatsResponse 所有项目统计响应
 type AllProjectStatsResponse struct {
 	TotalProjects     int64  `json:"totalProjects"`
+	PendingProjects   int64  `json:"pendingProjects"`
+	DeployingProjects int64  `json:"deployingProjects"`
 	ActiveProjects    int64  `json:"activeProjects"`
-	CompletedProjects int64  `json:"completedProjects"`
+	SuccessProjects   int64  `json:"successProjects"`
+	FailedProjects    int64  `json:"failedProjects"`
+	CancelledProjects int64  `json:"cancelledProjects"`
 	TotalRaised       string `json:"totalRaised"`
 	TotalInvestors    int64  `json:"totalInvestors"`
-	TotalGoal         string `json:"totalGoal"`
-	SuccessRate       string `json:"successRate"`
-	AverageInvestment string `json:"averageInvestment"`
 }
 
 // GetAllProjectStatsResponse 获取所有项目统计响应
@@ -130,24 +159,74 @@ type GetRefundStatsResponse struct {
 
 // 转换函数
 
+// ToProjectTeamResponse 将项目团队数据库模型转换为响应模型
+func ToProjectTeamResponse(team *model.ProjectTeamModel) ProjectTeamResponse {
+	return ProjectTeamResponse{
+		ID:         uint(team.Id),
+		ProjectID:  uint(team.ProjectId),
+		MemberName: team.MemberName,
+		MemberRole: team.MemberRole,
+		Address:    team.Address,
+		Email:      team.Email,
+		Bio:        team.Bio,
+		AvatarURL:  team.AvatarURL,
+		IsActive:   team.IsActive,
+	}
+}
+
+// ToProjectTeamResponseList 将项目团队数据库模型列表转换为响应模型列表
+func ToProjectTeamResponseList(teams []model.ProjectTeamModel) []ProjectTeamResponse {
+	result := make([]ProjectTeamResponse, len(teams))
+	for i, team := range teams {
+		result[i] = ToProjectTeamResponse(&team)
+	}
+	return result
+}
+
+// ToProjectMilestoneResponse 将项目里程碑数据库模型转换为响应模型
+func ToProjectMilestoneResponse(milestone *model.ProjectMilestoneModel) ProjectMilestoneResponse {
+	return ProjectMilestoneResponse{
+		ID:            uint(milestone.Id),
+		ProjectID:     uint(milestone.ProjectId),
+		Title:         milestone.Title,
+		Description:   milestone.Description,
+		TargetDate:    milestone.TargetDate,
+		CompletedDate: milestone.CompletedDate,
+		Status:        milestone.Status,
+		Progress:      milestone.Progress,
+		Priority:      milestone.Priority,
+	}
+}
+
+// ToProjectMilestoneResponseList 将项目里程碑数据库模型列表转换为响应模型列表
+func ToProjectMilestoneResponseList(milestones []model.ProjectMilestoneModel) []ProjectMilestoneResponse {
+	result := make([]ProjectMilestoneResponse, len(milestones))
+	for i, milestone := range milestones {
+		result[i] = ToProjectMilestoneResponse(&milestone)
+	}
+	return result
+}
+
 // ToProjectResponse 将数据库模型转换为响应模型
 func ToProjectResponse(project *model.ProjectModel) ProjectResponse {
 	return ProjectResponse{
-		ID:            uint(project.Id),
-		Title:         project.Title,
-		Description:   project.Description,
-		ImageURL:      project.ImageURL,
-		Category:      project.Category,
-		Creator:       project.CreatorAddress,
-		TargetAmount:  project.TargetAmount,
-		CurrentAmount: project.CurrentAmount,
-		MinAmount:     project.MinAmount,
-		MaxAmount:     project.MaxAmount,
-		Status:        string(project.Status),
-		StartTime:     project.StartTime,
-		EndTime:       project.EndTime,
-		CreatedAt:     project.CreatedAt,
-		UpdatedAt:     project.UpdatedAt,
+		ID:               uint(project.Id),
+		Title:            project.Title,
+		Description:      project.Description,
+		ImageURL:         project.ImageURL,
+		Category:         project.Category,
+		Creator:          project.CreatorAddress,
+		TargetAmount:     project.TargetAmount,
+		CurrentAmount:    project.CurrentAmount,
+		MinAmount:        project.MinAmount,
+		MaxAmount:        project.MaxAmount,
+		Status:           string(project.Status),
+		StartTime:        project.StartTime,
+		EndTime:          project.EndTime,
+		CreatedAt:        project.CreatedAt,
+		UpdatedAt:        project.UpdatedAt,
+		ProjectTeam:      ToProjectTeamResponseList(project.ProjectTeam),
+		ProjectMilestone: ToProjectMilestoneResponseList(project.ProjectMilestone),
 	}
 }
 
@@ -209,12 +288,13 @@ func ToRefundRecordResponseList(records []model.RefundRecordModel) []RefundRecor
 func ToAllProjectStatsResponse(stats map[string]interface{}) AllProjectStatsResponse {
 	return AllProjectStatsResponse{
 		TotalProjects:     stats["totalProjects"].(int64),
+		PendingProjects:   stats["pendingProjects"].(int64),
+		DeployingProjects: stats["deployingProjects"].(int64),
 		ActiveProjects:    stats["activeProjects"].(int64),
-		CompletedProjects: stats["completedProjects"].(int64),
+		SuccessProjects:   stats["successProjects"].(int64),
+		FailedProjects:    stats["failedProjects"].(int64),
+		CancelledProjects: stats["cancelledProjects"].(int64),
 		TotalRaised:       stats["totalRaised"].(string),
 		TotalInvestors:    stats["totalInvestors"].(int64),
-		TotalGoal:         stats["totalGoal"].(string),
-		SuccessRate:       stats["successRate"].(string),
-		AverageInvestment: stats["averageInvestment"].(string),
 	}
 }

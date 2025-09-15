@@ -53,10 +53,10 @@ func (p *ProjectLogic) GetProjects() ([]model.ProjectModel, error) {
 // GetProject 获取项目详情
 func (p *ProjectLogic) GetProject(id int64) (*model.ProjectModel, error) {
 	var project model.ProjectModel
-	if err := p.db.Preload("Contributions").
-		Preload("Events").
+	if err := p.db.Preload("ProjectTeam").
+		Preload("ProjectMilestone").
 		First(&project, id).Error; err != nil {
-		if err == gorm.ErrRecordNotFound {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, errors.New("项目不存在")
 		}
 		return nil, fmt.Errorf("获取项目详情失败: %w", err)
@@ -67,48 +67,79 @@ func (p *ProjectLogic) GetProject(id int64) (*model.ProjectModel, error) {
 
 // GetProjectStats 获取项目统计信息
 func (p *ProjectLogic) GetProjectStats(id int64) (map[string]interface{}, error) {
-	var project model.ProjectModel
-	if err := p.db.First(&project, id).Error; err != nil {
-		if err == gorm.ErrRecordNotFound {
-			return nil, errors.New("项目不存在")
-		}
-		return nil, err
+	// 使用一个 SQL 查询获取所有统计信息
+	var stats struct {
+		ProjectId         int64     `json:"project_id"`
+		CurrentAmount     int64     `json:"current_amount"`
+		TargetAmount      int64     `json:"target_amount"`
+		Status            string    `json:"status"`
+		StartTime         time.Time `json:"start_time"`
+		EndTime           time.Time `json:"end_time"`
+		ContributorCount  int64     `json:"contributor_count"`
+		ContributionCount int64     `json:"contribution_count"`
 	}
 
-	// 统计贡献者数量
-	var contributorCount int64
-	p.db.Model(&model.ContributeRecordModel{}).
-		Where("project_id = ?", id).
-		Distinct("address").
-		Count(&contributorCount)
+	// 使用子查询和 JOIN 来获取所有统计信息
+	err := p.db.Raw(`
+		SELECT 
+			p.id as project_id,
+			p.current_amount,
+			p.target_amount,
+			p.status,
+			p.start_time,
+			p.end_time,
+			COALESCE(contributor_stats.contributor_count, 0) as contributor_count,
+			COALESCE(contribution_stats.contribution_count, 0) as contribution_count
+		FROM project p
+		LEFT JOIN (
+			SELECT 
+				project_id,
+				COUNT(DISTINCT address) as contributor_count
+			FROM contribute_record 
+			WHERE project_id = ?
+			GROUP BY project_id
+		) contributor_stats ON p.id = contributor_stats.project_id
+		LEFT JOIN (
+			SELECT 
+				project_id,
+				COUNT(*) as contribution_count
+			FROM contribute_record 
+			WHERE project_id = ?
+			GROUP BY project_id
+		) contribution_stats ON p.id = contribution_stats.project_id
+		WHERE p.id = ?
+	`, id, id, id).Scan(&stats).Error
 
-	// 统计贡献记录数量
-	var contributionCount int64
-	p.db.Model(&model.ContributeRecordModel{}).
-		Where("project_id = ?", id).
-		Count(&contributionCount)
+	if err != nil {
+		return nil, fmt.Errorf("获取项目统计信息失败: %w", err)
+	}
+
+	// 检查项目是否存在
+	if stats.ProjectId == 0 {
+		return nil, errors.New("项目不存在")
+	}
 
 	// 计算完成百分比
 	completionPercentage := float64(0)
-	if project.TargetAmount > 0 {
-		completionPercentage = float64(project.CurrentAmount) / float64(project.TargetAmount) * 100
+	if stats.TargetAmount > 0 {
+		completionPercentage = float64(stats.CurrentAmount) / float64(stats.TargetAmount) * 100
 	}
 
 	// 计算剩余时间
 	remainingTime := time.Duration(0)
-	if project.Status == model.ProjectStatusActive && time.Now().Before(project.EndTime) {
-		remainingTime = time.Until(project.EndTime)
+	if stats.Status == string(model.ProjectStatusActive) && time.Now().Before(stats.EndTime) {
+		remainingTime = time.Until(stats.EndTime)
 	}
 
 	return map[string]interface{}{
-		"project_id":            project.Id,
-		"current_amount":        project.CurrentAmount,
-		"target_amount":         project.TargetAmount,
+		"project_id":            stats.ProjectId,
+		"current_amount":        stats.CurrentAmount,
+		"target_amount":         stats.TargetAmount,
 		"completion_percentage": completionPercentage,
-		"contributor_count":     contributorCount,
-		"contribution_count":    contributionCount,
+		"contributor_count":     stats.ContributorCount,
+		"contribution_count":    stats.ContributionCount,
 		"remaining_time":        remainingTime.String(),
-		"status":                project.Status,
+		"status":                stats.Status,
 	}, nil
 }
 
@@ -118,24 +149,42 @@ func (p *ProjectLogic) GetAllProjectStats() (map[string]interface{}, error) {
 	var totalProjects int64
 	p.db.Model(&model.ProjectModel{}).Count(&totalProjects)
 
-	// 按状态统计项目数量
-	var statusStats []struct {
-		Status string `json:"status"`
-		Count  int64  `json:"count"`
-	}
+	// 统计各状态项目数量
+	var pendingProjects int64
 	p.db.Model(&model.ProjectModel{}).
-		Select("status, count(*) as count").
-		Group("status").
-		Scan(&statusStats)
+		Where("status = ?", model.ProjectStatusPending).
+		Count(&pendingProjects)
 
-	// 统计总目标金额和当前金额
-	var totalStats struct {
-		TotalTargetAmount  int64 `json:"total_target_amount"`
-		TotalCurrentAmount int64 `json:"total_current_amount"`
-	}
+	var deployingProjects int64
 	p.db.Model(&model.ProjectModel{}).
-		Select("SUM(target_amount) as total_target_amount, SUM(current_amount) as total_current_amount").
-		Scan(&totalStats)
+		Where("status = ?", model.ProjectStatusDeploying).
+		Count(&deployingProjects)
+
+	var activeProjects int64
+	p.db.Model(&model.ProjectModel{}).
+		Where("status = ?", model.ProjectStatusActive).
+		Count(&activeProjects)
+
+	var successProjects int64
+	p.db.Model(&model.ProjectModel{}).
+		Where("status = ?", model.ProjectStatusSuccess).
+		Count(&successProjects)
+
+	var failedProjects int64
+	p.db.Model(&model.ProjectModel{}).
+		Where("status = ?", model.ProjectStatusFailed).
+		Count(&failedProjects)
+
+	var cancelledProjects int64
+	p.db.Model(&model.ProjectModel{}).
+		Where("status = ?", model.ProjectStatusCancelled).
+		Count(&cancelledProjects)
+
+	// 统计总当前金额
+	var totalCurrentAmount int64
+	p.db.Model(&model.ProjectModel{}).
+		Select("SUM(current_amount)").
+		Scan(&totalCurrentAmount)
 
 	// 统计总贡献者数量（去重）
 	var totalContributors int64
@@ -143,59 +192,16 @@ func (p *ProjectLogic) GetAllProjectStats() (map[string]interface{}, error) {
 		Distinct("address").
 		Count(&totalContributors)
 
-	// 统计总贡献记录数量
-	var totalContributions int64
-	p.db.Model(&model.ContributeRecordModel{}).Count(&totalContributions)
-
-	// 统计活跃项目数量（进行中的项目）
-	var activeProjects int64
-	p.db.Model(&model.ProjectModel{}).
-		Where("status = ?", model.ProjectStatusActive).
-		Count(&activeProjects)
-
-	// 统计成功项目数量
-	var successProjects int64
-	p.db.Model(&model.ProjectModel{}).
-		Where("status = ?", model.ProjectStatusSuccess).
-		Count(&successProjects)
-
-	// 统计失败项目数量
-	var failedProjects int64
-	p.db.Model(&model.ProjectModel{}).
-		Where("status = ?", model.ProjectStatusFailed).
-		Count(&failedProjects)
-
-	// 统计最近7天创建的项目数量
-	var recentProjects int64
-	sevenDaysAgo := time.Now().AddDate(0, 0, -7)
-	p.db.Model(&model.ProjectModel{}).
-		Where("created_at >= ?", sevenDaysAgo).
-		Count(&recentProjects)
-
-	// 计算成功项目数量（包括成功和失败的项目）
-	completedProjects := successProjects + failedProjects
-
-	// 计算成功率
-	successRate := float64(0)
-	if completedProjects > 0 {
-		successRate = float64(successProjects) / float64(completedProjects) * 100
-	}
-
-	// 计算平均投资金额
-	avgInvestment := float64(0)
-	if totalContributions > 0 {
-		avgInvestment = float64(totalStats.TotalCurrentAmount) / float64(totalContributions)
-	}
-
 	return map[string]interface{}{
 		"totalProjects":     totalProjects,
+		"pendingProjects":   pendingProjects,
+		"deployingProjects": deployingProjects,
 		"activeProjects":    activeProjects,
-		"completedProjects": completedProjects,
-		"totalRaised":       fmt.Sprintf("%d", totalStats.TotalCurrentAmount),
+		"successProjects":   successProjects,
+		"failedProjects":    failedProjects,
+		"cancelledProjects": cancelledProjects,
+		"totalRaised":       fmt.Sprintf("%d", totalCurrentAmount),
 		"totalInvestors":    totalContributors,
-		"totalGoal":         fmt.Sprintf("%d", totalStats.TotalTargetAmount),
-		"successRate":       fmt.Sprintf("%.2f", successRate),
-		"averageInvestment": fmt.Sprintf("%.0f", avgInvestment),
 	}, nil
 }
 

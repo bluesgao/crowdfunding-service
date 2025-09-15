@@ -36,6 +36,10 @@ type ProjectModel struct {
 	// 区块链信息
 	ContractAddress string `json:"contract_address"`
 	TransactionHash string `json:"transaction_hash"`
+
+	// 关联关系
+	ProjectTeam      []ProjectTeamModel      `json:"project_team" gorm:"foreignKey:ProjectId"`
+	ProjectMilestone []ProjectMilestoneModel `json:"project_milestone" gorm:"foreignKey:ProjectId"`
 }
 
 // ProjectStatus 项目状态
